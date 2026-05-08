@@ -1,9 +1,13 @@
-import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { Eye, ThumbsUp, MessageSquare, MoreVertical, Search } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import {
+    Eye, ThumbsUp, MessageSquare, MoreVertical, Search,
+    BarChart2, Globe, Lock, Trash2, Play,
+} from "lucide-react";
 import { timeAgo } from "@/utils/timeAgo";
 import videoApi from "@api/videoApi";
 import type { VideoPreview } from "@api/types";
+import { toast } from "react-hot-toast";
 
 type StatusFilter = "all" | "public" | "private" | "processing";
 
@@ -13,6 +17,95 @@ const STATUS_LABEL: Record<string, { label: string; color: string }> = {
     Failed:     { label: "Failed",     color: "text-red-500" },
     Queued:     { label: "Processing", color: "text-yellow-500" },
 };
+
+function VideoMenu({ video, onPrivacyChange, onDelete }: {
+    video: VideoPreview;
+    onPrivacyChange: (id: string, isPublic: boolean) => void;
+    onDelete: (id: string) => void;
+}) {
+    const [open, setOpen] = useState(false);
+    const ref = useRef<HTMLDivElement>(null);
+    const navigate = useNavigate();
+
+    useEffect(() => {
+        if (!open) return;
+        function handle(e: MouseEvent) {
+            if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+        }
+        document.addEventListener("mousedown", handle);
+        return () => document.removeEventListener("mousedown", handle);
+    }, [open]);
+
+    const isPublic = (video.privacy ?? "public").toLowerCase() === "public";
+
+    const actions = [
+        {
+            icon: <Play className="h-4 w-4" />,
+            label: "Watch",
+            onClick: () => navigate(`/watch?v=${video.id}`),
+        },
+        {
+            icon: <BarChart2 className="h-4 w-4" />,
+            label: "Analytics",
+            onClick: () => navigate(`/studio/video/${video.id}`),
+        },
+        {
+            icon: isPublic ? <Lock className="h-4 w-4" /> : <Globe className="h-4 w-4" />,
+            label: isPublic ? "Make private" : "Make public",
+            onClick: async () => {
+                try {
+                    await videoApi.updateVideoPrivacy(video.id, !isPublic);
+                    onPrivacyChange(video.id, !isPublic);
+                    toast.success(isPublic ? "Video set to private" : "Video set to public");
+                } catch {
+                    toast.error("Failed to update privacy");
+                }
+                setOpen(false);
+            },
+        },
+        {
+            icon: <Trash2 className="h-4 w-4 text-destructive" />,
+            label: <span className="text-destructive">Delete</span>,
+            onClick: async () => {
+                if (!confirm("Delete this video? This cannot be undone.")) return;
+                try {
+                    await videoApi.deleteVideo(video.id);
+                    onDelete(video.id);
+                    toast.success("Video deleted");
+                } catch {
+                    toast.error("Failed to delete video");
+                }
+                setOpen(false);
+            },
+        },
+    ];
+
+    return (
+        <div ref={ref} className="relative shrink-0">
+            <button
+                onClick={(e) => { e.preventDefault(); setOpen((v) => !v); }}
+                className="p-1.5 rounded-full hover:bg-muted transition-colors opacity-0 group-hover:opacity-100"
+            >
+                <MoreVertical className="h-4 w-4 text-muted-foreground" />
+            </button>
+
+            {open && (
+                <div className="absolute right-0 top-8 z-50 min-w-[170px] rounded-md border bg-popover shadow-md py-1">
+                    {actions.map((a, i) => (
+                        <button
+                            key={i}
+                            onClick={a.onClick}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 text-sm hover:bg-muted transition-colors text-left"
+                        >
+                            {a.icon}
+                            {a.label}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
 
 export default function YourVideos() {
     const [videos, setVideos] = useState<VideoPreview[]>([]);
@@ -27,21 +120,31 @@ export default function YourVideos() {
             .finally(() => setLoading(false));
     }, []);
 
+    const handlePrivacyChange = (id: string, isPublic: boolean) => {
+        setVideos((prev) =>
+            prev.map((v) => v.id === id ? { ...v, privacy: isPublic ? "public" : "private" } : v)
+        );
+    };
+
+    const handleDelete = (id: string) => {
+        setVideos((prev) => prev.filter((v) => v.id !== id));
+    };
+
     const filtered = videos.filter((v) => {
-        const matchSearch = v.title?.toLowerCase().includes(search.toLowerCase()) ?? true;
+        const matchSearch = (v.title ?? "").toLowerCase().includes(search.toLowerCase());
+        const privacy = (v.privacy ?? "public").toLowerCase();
         const matchFilter =
-            filter === "all" ? true
-            : filter === "public" ? v.privacy?.toLowerCase() === "public"
-            : filter === "private" ? v.privacy?.toLowerCase() === "private"
-            : filter === "processing" ? false
-            : true;
+            filter === "all"        ? true :
+            filter === "public"     ? privacy === "public" :
+            filter === "private"    ? privacy === "private" :
+            false;
         return matchSearch && matchFilter;
     });
 
     const tabs: { key: StatusFilter; label: string }[] = [
-        { key: "all", label: "All" },
-        { key: "public", label: "Public" },
-        { key: "private", label: "Private" },
+        { key: "all",        label: "All" },
+        { key: "public",     label: "Public" },
+        { key: "private",    label: "Private" },
         { key: "processing", label: "Processing" },
     ];
 
@@ -77,7 +180,7 @@ export default function YourVideos() {
                 />
             </div>
 
-            {/* Table */}
+            {/* List */}
             {loading ? (
                 <div className="space-y-3">
                     {Array.from({ length: 6 }).map((_, i) => (
@@ -108,7 +211,7 @@ export default function YourVideos() {
                                 <Link to={`/watch?v=${v.id}`} className="shrink-0">
                                     <div className="relative rounded-xl overflow-hidden bg-muted" style={{ width: 160, height: 90 }}>
                                         <img
-                                            src={v.thumbnail_url || v.previewUrl || ""}
+                                            src={v.thumbnail_url || (v as any).previewUrl || ""}
                                             alt={v.title}
                                             className="w-full h-full object-cover"
                                             loading="lazy"
@@ -120,7 +223,7 @@ export default function YourVideos() {
                                 <div className="flex-1 min-w-0">
                                     <Link to={`/watch?v=${v.id}`}>
                                         <h3 className="font-semibold text-sm line-clamp-2 hover:underline leading-snug">
-                                            {v.title || v.name}
+                                            {v.title}
                                         </h3>
                                     </Link>
                                     <p className={`text-xs mt-0.5 font-medium ${status.color}`}>{status.label}</p>
@@ -145,10 +248,12 @@ export default function YourVideos() {
                                     </div>
                                 </div>
 
-                                {/* Menu */}
-                                <button className="shrink-0 p-1.5 rounded-full hover:bg-muted transition-colors opacity-0 group-hover:opacity-100">
-                                    <MoreVertical className="h-4 w-4 text-muted-foreground" />
-                                </button>
+                                {/* Three-dot menu */}
+                                <VideoMenu
+                                    video={v}
+                                    onPrivacyChange={handlePrivacyChange}
+                                    onDelete={handleDelete}
+                                />
                             </div>
                         );
                     })}

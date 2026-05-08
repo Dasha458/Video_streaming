@@ -3,28 +3,40 @@ import clientApi from "./clientApi";
 
 export const getChannelInfo = (channelName: string): Promise<ChannelInfo> =>
   clientApi
-    .get<ChannelInfo>(`/channels/${channelName}`)
+    .get<ChannelInfo>(`/api/channels/${channelName}`)
     .then((res) => res.data);
 
-export const refreshChannelInfo = (channelName: string): Promise<ChannelInfo> =>
+export const getMyChannel = (): Promise<ChannelInfo | null> =>
   clientApi
-    .post<ChannelInfo>(`/channels/${channelName}/refresh`)
+    .get<ChannelInfo | null>(`/api/channels/me`)
+    .then((res) => res.data);
+
+export const createChannel = (data: { name: string; description?: string }): Promise<ChannelInfo> =>
+  clientApi
+    .post<ChannelInfo>(`/api/channels`, data)
+    .then((res) => res.data);
+
+export const updateMyChannel = (data: { name?: string; description?: string }): Promise<ChannelInfo> =>
+  clientApi
+    .patch<ChannelInfo>(`/api/channels/me`, data)
     .then((res) => res.data);
 
 export const subscribeToChannel = (channelName: string): Promise<void> =>
-  clientApi.post(`/channels/${channelName}/subscribe`).then(() => {});
+  clientApi.post(`/api/channels/${channelName}/subscribe`).then(() => {});
 
 export const unsubscribeFromChannel = (channelName: string): Promise<void> =>
-  clientApi.post(`/channels/${channelName}/unsubscribe`).then(() => {});
+  clientApi.post(`/api/channels/${channelName}/unsubscribe`).then(() => {});
 
 export const getMySubscriptions = (): Promise<ChannelInfo[]> =>
   clientApi
-    .get<ChannelInfo[]>(`/channels/subscriptions`)
+    .get<ChannelInfo[]>(`/api/channels/subscriptions`)
     .then((res) => res.data);
 
 export default {
   getChannelInfo,
-  refreshChannelInfo,
+  getMyChannel,
+  createChannel,
+  updateMyChannel,
   subscribeToChannel,
   unsubscribeFromChannel,
   getMySubscriptions,

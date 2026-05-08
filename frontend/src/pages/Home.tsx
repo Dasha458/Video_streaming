@@ -6,6 +6,7 @@ import categoriesApi from "@api/categoriesApi";
 import type { Category } from "@api/types";
 import videoApi from "@api/videoApi";
 import { timeAgo } from "@/utils/timeAgo";
+import { formatCategoryName } from "@/utils/formatters";
 
 interface Video {
     id: string;
@@ -108,13 +109,13 @@ export default function Home() {
                                 : "bg-muted hover:bg-muted/80 text-foreground"
                             }`}
                     >
-                        {cat.name}
+                        {cat.name === "All" ? "All" : formatCategoryName(cat.name)}
                     </button>
                 ))}
             </div>
 
-            {/* Video grid */}
-            <div className="grid gap-x-4 gap-y-8 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 pb-10">
+            {/* Video grid — YouTube-style: max 4 cols on xl, wider cards */}
+            <div className="grid gap-x-4 gap-y-10 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 pb-10">
                 {videos.length === 0 && loading ? (
                     Array.from({ length: PAGE_SIZE }).map((_, i) => <VideoCard key={i} loading />)
                 ) : (

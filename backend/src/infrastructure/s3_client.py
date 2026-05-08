@@ -41,25 +41,26 @@ class S3Client:
                     await client.create_bucket(Bucket=bucket_name)
                     await client.put_bucket_versioning(
                         Bucket=bucket_name,
-                        VersioningConfiguration={"UserStatus": "Enabled"},
+                        VersioningConfiguration={"Status": "Enabled"},
                     )
-                    await client.put_bucket_cors(
-                        Bucket=bucket_name,
-                        CORSConfiguration={
-                            "CORSRules": [
-                                {
-                                    "AllowedHeaders": ["Authorization", "Range"],
-                                    "AllowedMethods": ["GET"],
-                                    "AllowedOrigins": ["http://localhost/"],
-                                    "ExposeHeaders": ["ETag"],
-                                    "MaxAgeSeconds": 3000,
-                                }
-                            ]
-                        },
-                    )
-                    logging.info(
-                        f"Bucket '{bucket_name}' created with versioning and cors"
-                    )
+                    try:
+                        await client.put_bucket_cors(
+                            Bucket=bucket_name,
+                            CORSConfiguration={
+                                "CORSRules": [
+                                    {
+                                        "AllowedHeaders": ["Authorization", "Range"],
+                                        "AllowedMethods": ["GET"],
+                                        "AllowedOrigins": ["http://localhost/"],
+                                        "ExposeHeaders": ["ETag"],
+                                        "MaxAgeSeconds": 3000,
+                                    }
+                                ]
+                            },
+                        )
+                    except ClientError as e:
+                        logging.warning(f"Could not set CORS for '{bucket_name}': {e}")
+                    logging.info(f"Bucket '{bucket_name}' created")
 
     @asynccontextmanager
     async def _get_client(self) -> AsyncGenerator[AioBaseClient, None]:
@@ -270,12 +271,9 @@ class S3Client:
     ) -> str | None:
         if not bucket_name:
             raise ValueError("bucket_name must be provided")
-        elif bucket_name not in self.bucket_names:
-            raise ValueError("bucket_name is not in bucket_names")
 
         try:
             async with self._get_client() as client:
-                await client.head_object(Bucket=bucket_name, Key=object_key)
                 url = await client.generate_presigned_url(
                     ClientMethod=client_method,
                     Params={"Bucket": bucket_name, "Key": object_key},
@@ -285,7 +283,7 @@ class S3Client:
                 return url
         except ClientError:
             logging.error(
-                f"Couldn't get a presigned URL for client method '{client_method}' or file does not exist."
+                f"Couldn't get a presigned URL for client method '{client_method}'."
             )
             return None
 

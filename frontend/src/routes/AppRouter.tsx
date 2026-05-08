@@ -23,8 +23,12 @@ const Subscriptions = lazy(() => import("@/pages/Subscriptions"));
 const SearchResults = lazy(() => import("@/pages/SearchResults"));
 const GitHubCallback = lazy(() => import("@/pages/GitHubCallback"));
 const Studio = lazy(() => import("@/pages/Studio"));
+const VideoAnalytics = lazy(() => import("@/pages/VideoAnalytics"));
 const Playlists = lazy(() => import("@/pages/Playlists"));
+const PlaylistDetail = lazy(() => import("@/pages/PlaylistDetail"));
 const YourVideos = lazy(() => import("@/pages/YourVideos"));
+const CreditPay = lazy(() => import("@/pages/CreditPay"));
+const Notifications = lazy(() => import("@/pages/Notifications"));
 
 export default function AppRouter() {
     return (
@@ -43,8 +47,12 @@ export default function AppRouter() {
                     <Route path="/subscriptions" element={<ProtectedRoute><Subscriptions /></ProtectedRoute>} />
                     <Route path="/search-results" element={<SearchResults />} />
                     <Route path="/studio" element={<ProtectedRoute><Studio /></ProtectedRoute>} />
+                    <Route path="/studio/video/:id" element={<ProtectedRoute><VideoAnalytics /></ProtectedRoute>} />
                     <Route path="/playlists" element={<ProtectedRoute><Playlists /></ProtectedRoute>} />
+                    <Route path="/playlist/:id" element={<ProtectedRoute><PlaylistDetail /></ProtectedRoute>} />
                     <Route path="/your-videos" element={<ProtectedRoute><YourVideos /></ProtectedRoute>} />
+                    <Route path="/payment" element={<ProtectedRoute><CreditPay /></ProtectedRoute>} />
+                    <Route path="/notifications" element={<ProtectedRoute><Notifications /></ProtectedRoute>} />
                 <Route path="/channel/:channel_name" element={<Channel />} />
                 </Route>
 

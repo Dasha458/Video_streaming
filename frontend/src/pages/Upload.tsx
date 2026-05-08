@@ -1,4 +1,5 @@
 import React, {useCallback, useRef, useState, useEffect} from "react";
+import CreateChannelGate from "@/components/CreateChannelGate";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
@@ -172,6 +173,7 @@ export default function UploadPage() {
 
     /* ── Phase 2: Details ───────────────────────────────────────── */
     return (
+        <CreateChannelGate>
         <div className="flex flex-col">
             {/* Top bar */}
             <div className="flex items-center justify-between border-b px-6 py-4 sticky top-0 bg-background z-10">
@@ -358,5 +360,6 @@ export default function UploadPage() {
                 </div>
             </div>
         </div>
+        </CreateChannelGate>
     );
 }

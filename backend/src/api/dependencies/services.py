@@ -11,12 +11,18 @@ from src.infrastructure import (
 )
 from src.services import get_current_user_id
 from src.services.analytics import AnalyticsService
+from src.services.channels import ChannelService
 from src.services.comments import CommentService
 from src.services.file_signing import FileSigningService
 from src.services.files import FileService
 from src.services.health import HealthService
+from src.services.history import HistoryService
+from src.services.liked import LikedService
+from src.services.notifications import NotificationService
+from src.services.playlists import PlaylistService
 from src.services.search import SearchService
 from src.services.videos import VideoService
+from src.services.watch_later import WatchLaterService
 
 if TYPE_CHECKING:
     from elasticsearch import AsyncElasticsearch
@@ -73,3 +79,46 @@ async def get_service_and_channel(
     service = AnalyticsService(session)
     channel = await service.get_channel(user_id)
     return service, channel
+
+
+def get_analytics_service(
+    session: "AsyncSession" = Depends(get_async_session),
+) -> AnalyticsService:
+    """Standalone analytics service used by the watch-session heartbeat."""
+    return AnalyticsService(session)
+
+
+def get_channel_service(
+    session: "AsyncSession" = Depends(get_async_session),
+) -> ChannelService:
+    return ChannelService(session)
+
+
+def get_history_service(
+    session: "AsyncSession" = Depends(get_async_session),
+) -> HistoryService:
+    return HistoryService(session)
+
+
+def get_watch_later_service(
+    session: "AsyncSession" = Depends(get_async_session),
+) -> WatchLaterService:
+    return WatchLaterService(session)
+
+
+def get_playlist_service(
+    session: "AsyncSession" = Depends(get_async_session),
+) -> PlaylistService:
+    return PlaylistService(session)
+
+
+def get_notification_service(
+    session: "AsyncSession" = Depends(get_async_session),
+) -> NotificationService:
+    return NotificationService(session)
+
+
+def get_liked_service(
+    session: "AsyncSession" = Depends(get_async_session),
+) -> LikedService:
+    return LikedService(session)

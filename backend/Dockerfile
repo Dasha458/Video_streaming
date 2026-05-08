@@ -19,6 +19,13 @@ COPY pyproject.toml uv.lock ./
 
 RUN uv sync --no-dev --frozen
 
+# Migration tooling — not part of the main runtime deps but needed on boot
+# so the container can auto-apply alembic migrations against PostgreSQL.
+# Installed as a separate layer to avoid bloating the locked dependency tree.
+RUN uv pip install --python /opt/venv/bin/python \
+        "alembic>=1.16.5" \
+        "psycopg2-binary>=2.9.11"
+
 COPY src ./src
 COPY app ./app
 COPY main.py .
@@ -26,12 +33,14 @@ COPY log_conf.yaml .
 COPY alembic.ini .
 COPY alembic ./alembic
 COPY utils ./utils
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 RUN addgroup --system app && adduser --system --group --home /app app
 RUN chown -R app:app /app /opt/venv
 USER app
 
-ENTRYPOINT ["uvicorn", "main:app"]
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["--host", "0.0.0.0", \
     "--port", "8000", \
     "--loop", "uvloop", \

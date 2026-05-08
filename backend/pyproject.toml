@@ -28,6 +28,7 @@ dependencies = [
     "uvicorn[standard]>=0.37.0",
     "uvloop; sys_platform == 'linux'",
     "xxhash>=3.6.0",
+    "aiofiles>=25.1.0",
 ]
 
 [dependency-groups]
@@ -41,7 +42,9 @@ dev = [
     "pip-licenses>=5.5.0",
     "pre-commit>=4.3.0",
     "pytest>=8.4.2",
+    "pytest-asyncio>=0.24.0",
     "pytest-cov>=7.0.0",
+    "httpx>=0.27.0",
     "ruff>=0.13.3",
     "types-aiofiles>=25.1.0.20251011",
     "types-cachetools>=6.2.0.20251022",
@@ -97,6 +100,7 @@ exclude = "(alembic|.venv)"
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+asyncio_mode = "auto"
 
 [tool.babel]
 source-paths = ["src"]
@@ -126,5 +130,5 @@ build-backend = "setuptools.build_meta"
 
 [project.scripts]
 verify_relationships = "utils.verify_relationships:main"
-seed_db = "utils.seed:main"
+seed_db = "utils.db_seeder:main"
 reindex_elasticsearch = "utils.reindex_elasticsearch:main"

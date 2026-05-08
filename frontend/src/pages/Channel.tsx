@@ -76,7 +76,7 @@ export default function Channel() {
                                 <>
                                     <h1 className="text-xl sm:text-2xl font-bold">{channel.name}</h1>
                                     <p className="text-sm text-muted-foreground mt-0.5">
-                                        @{channel.name.toLowerCase().replace(/\s+/g, "")} · {formatSubs(channel.subscribersCount)}
+                                        @{(channel.name ?? channel.channel_name ?? "").toLowerCase().replace(/\s+/g, "")} · {formatSubs(channel.subscribersCount)}
                                     </p>
                                     {channel.bio && (
                                         <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{channel.bio}</p>

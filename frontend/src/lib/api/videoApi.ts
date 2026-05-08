@@ -17,6 +17,7 @@ interface VideosResponse {
 export const mapToPreview = (data: any): VideoPreview => ({
   id: data.id,
   previewUrl: data.thumbnail || "/placeholder.jpg",
+  thumbnail_url: data.thumbnail || "/placeholder.jpg",
   title: data.title || "Untitled",
   name: data.title || "Untitled",
   createdAt: data.created_at || new Date().toISOString(),
@@ -27,7 +28,8 @@ export const mapToPreview = (data: any): VideoPreview => ({
   views: data.views_count ?? 0,
   likesCount: data.likes_count ?? 0,
   dislikesCount: data.dislikes_count ?? 0,
-  privacy: data.privacy === "public" ? "Public" : "Private",
+  privacy: data.privacy ?? "public",
+  status: data.status ?? "Ready",
 });
 
 export const mapToDetail = (data: any): Video => ({
@@ -114,9 +116,7 @@ export const uploadVideo = async (
 };
 
 export const deleteVideo = async (id: string): Promise<void> => {
-  await clientApi.delete(`/api/files`, {
-    params: { video_id: id },
-  });
+  await clientApi.delete(`/api/files/videos/${id}`);
 };
 
 export const updateVideoPrivacy = async (
@@ -163,7 +163,4 @@ export default {
   downloadVideo,
   getVideoDownloadInfo,
   getVideoPreviewsByCategory,
-  //generateThumbnail,
-  //getThumbnail,
-  //checkVideoStatus,
 };

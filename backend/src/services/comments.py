@@ -13,7 +13,7 @@ from src.errors.comments import (
     ParentCommentVideoMismatchError,
 )
 from src.errors.videos import VideoNotFoundError
-from src.models import Comment, CommentReaction, Video
+from src.models import Channel, Comment, CommentReaction, Notification, Video
 from src.schemas.comments import to_comment_read
 from src.services.reactions import toggle_reaction
 
@@ -68,9 +68,34 @@ class CommentService:
             created_at=datetime.now(),
         )
         self.session.add(comment)
+
+        # 4. Notify: video owner on new top-level comment; parent author on reply
+        if parent_id:
+            parent_comment = await self.session.scalar(
+                select(Comment).where(Comment.id == parent_id)
+            )
+            if parent_comment and parent_comment.user_id != user_id:
+                self.session.add(Notification(
+                    user_id=parent_comment.user_id,
+                    content="Someone replied to your comment",
+                    link=f"/watch?v={video_id}",
+                    notification_type="comment_reply",
+                ))
+        else:
+            channel = await self.session.scalar(
+                select(Channel).where(Channel.id == video.channel_id)
+            )
+            if channel and channel.user_id != user_id:
+                self.session.add(Notification(
+                    user_id=channel.user_id,
+                    content="Someone commented on your video",
+                    link=f"/watch?v={video_id}",
+                    notification_type="new_comment",
+                ))
+
         await self.session.commit()
 
-        # 4. Refresh for response
+        # 5. Refresh for response
         await self.session.refresh(comment, attribute_names=["user"])
         return to_comment_read(comment)
 

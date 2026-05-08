@@ -1,4 +1,5 @@
 import {useState} from "react";
+import {useNavigate} from "react-router-dom";
 import {Button} from "@/components/ui/button";
 import {CheckCircle2, XCircle, Info, ArrowRight, Download} from "lucide-react";
 import {cn} from "@/lib/utils";
@@ -108,6 +109,7 @@ const plans: Plan[] = [
 
 export default function PricingTable() {
     const [isYearly, setIsYearly] = useState(true);
+    const navigate = useNavigate();
 
     return (
         <div className="min-h-screen px-4 py-12 sm:px-6 lg:px-8">
@@ -185,7 +187,10 @@ export default function PricingTable() {
                                         : "Billed monthly"}
                             </p>
 
-                            <Button className={cn("font-medium", plan.buttonColorClass)}>
+                            <Button
+                                className={cn("font-medium", plan.buttonColorClass)}
+                                onClick={() => plan.priceMonthly > 0 ? navigate("/payment") : navigate("/register")}
+                            >
                                 {plan.buttonText} <ArrowRight/>
                             </Button>
 

@@ -1,33 +1,45 @@
 from datetime import datetime
-from typing import TYPE_CHECKING, List, Optional
+from typing import List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-if TYPE_CHECKING:
-    from video import VideoRead
+from src.schemas.video import VideoPreview
 
 
-class PlaylistBase(BaseModel):
+class PlaylistCreate(BaseModel):
     name: str
     description: Optional[str] = None
 
+    @field_validator("name")
+    @classmethod
+    def name_must_not_be_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Playlist name cannot be empty")
+        return v.strip()
 
-class PlaylistCreate(PlaylistBase):
-    """Schema for creating a new playlist."""
 
-    pass
-
-
-class PlaylistRead(PlaylistBase):
-    """Schema for reading a playlist (response model)."""
-
+class PlaylistResponse(BaseModel):
     id: UUID
-    user_id: UUID
+    name: str
+    description: Optional[str] = None
     created_at: datetime
+    video_count: int
 
-    # Field(default_factory=...) to avoid mutable default (important!)
-    videos: List["VideoRead"] = Field(default_factory=list)
+    model_config = ConfigDict(from_attributes=True)
 
-    class Config:
-        from_attributes = True
+
+class PlaylistDetailResponse(BaseModel):
+    id: UUID
+    name: str
+    description: Optional[str] = None
+    created_at: datetime
+    items: List[VideoPreview] = Field(default_factory=list)
+    total: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PlaylistsPage(BaseModel):
+    items: List[PlaylistResponse]
+    total: int

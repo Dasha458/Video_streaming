@@ -1,69 +1,75 @@
-import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import VideoCard from "@/components/VideoCard";
 import InfiniteScroll from "@/components/infinite-scroll";
-import { Link } from "react-router-dom";
-
-interface Video {
-    id: string;
-    title: string;
-    thumbnail: string;
-    channel_avatar: string;
-    channel_name: string;
-}
+import { Button } from "@/components/ui/button";
+import { Clock } from "lucide-react";
+import { getWatchLater, clearWatchLater, removeFromWatchLater } from "@api/watchLaterApi";
+import { usePagedList } from "@/hooks/usePagedList";
 
 export default function WatchLater() {
-    const [videos, setVideos] = useState<Video[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [hasMore, setHasMore] = useState(true);
+    const { items: videos, setItems, loading, hasMore, setHasMore, loadMore } = usePagedList(getWatchLater);
 
-    const allVideos: Video[] = useMemo(
-        () =>
-            Array.from({ length: 120 }).map((_, i) => ({
-                id: `video-${i + 1}`,
-                title: `Mock Video ${i + 1}`,
-                thumbnail: `https://via.placeholder.com/250x125?text=Video+${i + 1}`,
-                channel_avatar: "https://api.dicebear.com/7.x/identicon/svg?seed",
-                channel_name: `Channel ${i + 1}`,
-            })),
-        []
-    );
-
-    const loadMore = () => {
-        const pageSize = 20;
-        setVideos(prevVideos => {
-            const nextVideos = allVideos.slice(0, prevVideos.length + pageSize);
-            setHasMore(nextVideos.length < allVideos.length);
-            setLoading(false);
-            return nextVideos;
-        });
+    const handleRemove = async (videoId: string) => {
+        try {
+            await removeFromWatchLater(videoId);
+            setItems((prev) => prev.filter((v) => v.id !== videoId));
+        } catch { /* ignore */ }
     };
 
-    if (loading && videos.length === 0) {
-        loadMore();
-    }
+    const handleClear = async () => {
+        try {
+            await clearWatchLater();
+            setItems([]);
+            setHasMore(false);
+        } catch { /* ignore */ }
+    };
 
     return (
         <div className="px-4 py-4">
-            <h1 className="text-2xl font-bold mb-6">Watch later</h1>
-            <div className="grid gap-x-4 gap-y-8 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 pb-10">
-                {loading
-                    ? Array.from({ length: 12 }).map((_, i) => <VideoCard key={i} loading />)
-                    : (
-                        <InfiniteScroll loadMore={loadMore} hasMore={hasMore}>
-                            {videos.map(video => (
-                                <Link key={video.id} to={`/watch?v=${video.id}`} className="w-full">
+            <div className="flex justify-between items-center mb-6">
+                <h1 className="text-2xl font-bold">Watch later</h1>
+                {videos.length > 0 && (
+                    <Button variant="outline" size="sm" onClick={handleClear}>Clear all</Button>
+                )}
+            </div>
+
+            {loading && videos.length === 0 ? (
+                <div className="grid gap-x-4 gap-y-8 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 pb-10">
+                    {Array.from({ length: 12 }).map((_, i) => <VideoCard key={i} loading />)}
+                </div>
+            ) : videos.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-24 text-center">
+                    <Clock className="h-16 w-16 text-muted-foreground mb-4" />
+                    <h2 className="text-lg font-semibold mb-1">No saved videos</h2>
+                    <p className="text-sm text-muted-foreground">Videos you save will appear here.</p>
+                </div>
+            ) : (
+                <div className="grid gap-x-4 gap-y-8 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 pb-10">
+                    <InfiniteScroll loadMore={loadMore} hasMore={hasMore}>
+                        {videos.map((video) => (
+                            <div key={video.id} className="relative w-full">
+                                <Link to={`/watch?v=${video.id}`} className="w-full block">
                                     <VideoCard
                                         id={video.id}
                                         title={video.title}
-                                        thumbnail={video.thumbnail}
-                                        channel_avatar={video.channel_avatar}
-                                        channel_name={video.channel_name}
+                                        thumbnail={video.previewUrl || ""}
+                                        channel_avatar={video.channel_avatar || ""}
+                                        channel_name={video.channel}
                                     />
                                 </Link>
-                            ))}
-                        </InfiniteScroll>
-                    )}
-            </div>
+                                <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    onClick={() => handleRemove(video.id)}
+                                >
+                                    Remove
+                                </Button>
+                            </div>
+                        ))}
+                    </InfiniteScroll>
+                </div>
+            )}
         </div>
     );
 }

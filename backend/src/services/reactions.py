@@ -1,7 +1,7 @@
 import uuid
 from typing import Type
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
@@ -36,22 +36,15 @@ async def toggle_reaction(
     )
     existing = await session.scalar(stmt)
 
-    # Remove the existing reaction if the same type (toggle off)
-    if isinstance(existing, (VideoReaction, CommentReaction)):
-        if existing and existing.reaction_type_id == reaction_type_id:
-            await session.execute(
-                delete(target_model).where(target_model.id == existing.id)
-            )
-
-        # Update to a new reaction type if different
-        elif existing:
-            await session.execute(
-                update(target_model)
-                .where(target_model.id == existing.id)
-                .values(reaction_type_id=reaction_type_id)
-            )
-    # Create a new reaction if none
+    if existing is not None:
+        if existing.reaction_type_id == reaction_type_id:
+            # Same reaction type → toggle off (delete)
+            await session.delete(existing)
+        else:
+            # Different reaction type → switch
+            existing.reaction_type_id = reaction_type_id
     else:
+        # No existing reaction → create
         session.add(
             target_model(
                 user_id=user_id,

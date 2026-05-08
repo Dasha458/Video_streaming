@@ -10,7 +10,7 @@ auto-pr-to-stage:
     # 2. Push dev branch (in case of changes)
     - git push origin dev || echo "No changes to push"
 
-    # 3. Create Merge Request via GitLab API
+    # 3. Create Merge Request via GitLab API (requires human approval — no auto-merge)
     - |
       MR_RESPONSE=$(curl --request POST "$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests" \
         --header "PRIVATE-TOKEN: $GITLAB_TOKEN" \
@@ -19,19 +19,14 @@ auto-pr-to-stage:
           "source_branch": "dev",
           "target_branch": "stage",
           "title": "Merge dev into stage (auto MR)",
-          "description": "Auto MR after successful CI",
+          "description": "Auto MR after successful CI — requires manual review and approval before merging.",
           "remove_source_branch": false,
-          "labels": "auto-pr",
-          "remove_source_branch": false
+          "labels": "auto-pr"
         }')
       echo "Merge Request created: $MR_RESPONSE"
 
-    # 4. Optional: auto-merge immediately
-    - |
-      MR_ID=$(echo $MR_RESPONSE | jq '.id')
-      curl --request PUT "$CI_API_V4_URL/projects/$CI_PROJECT_ID/merge_requests/$MR_ID/merge" \
-        --header "PRIVATE-TOKEN: $GITLAB_TOKEN" \
-        --header "Content-Type: application/json" \
-        --data '{"merge_when_pipeline_succeeds": true, "should_remove_source_branch": false}'
+    # NOTE: Auto-merge intentionally disabled — merges to stage must be approved by a human reviewer.
+    # To re-enable, restore the PUT .../merge_requests/$MR_ID/merge call below and obtain sign-off.
+
   only:
     - dev

@@ -20,11 +20,16 @@ class VideoService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get_playback(self, video_id: UUID, user_id: UUID | None):
+    async def get_playback(
+        self,
+        video_id: UUID,
+        user_id: UUID | None,
+        source_type: str | None = None,
+    ):
         video = await self._get_video_with_details(video_id)
 
         if user_id:
-            await self._record_view(video.id, user_id)
+            await self._record_view(video.id, user_id, source_type=source_type)
 
         resolutions = [f"{r.height}p" for r in video.resolutions]
         return map_video_to_playback(video, resolutions)
@@ -125,14 +130,25 @@ class VideoService:
             raise VideoNotFoundError()
         return video
 
-    async def _record_view(self, video_id: UUID, user_id: UUID) -> None:
+    async def _record_view(
+        self,
+        video_id: UUID,
+        user_id: UUID,
+        source_type: str | None = None,
+    ) -> None:
         exists = await self.session.scalar(
             select(VideoView.id).where(
                 VideoView.video_id == video_id, VideoView.user_id == user_id
             )
         )
         if not exists:
-            self.session.add(VideoView(video_id=video_id, user_id=user_id))
+            self.session.add(
+                VideoView(
+                    video_id=video_id,
+                    user_id=user_id,
+                    source_type=(source_type or "unknown")[:32],
+                )
+            )
             await self.session.execute(
                 update(Video)
                 .where(Video.id == video_id)

@@ -26,95 +26,95 @@
   "categories": [
     {
       "id": "NONE",
-      "name": "Education"
+      "name": "education"
     },
     {
       "id": "NONE",
-      "name": "Entertainment"
+      "name": "entertainment"
     },
     {
       "id": "NONE",
-      "name": "Music"
+      "name": "music"
     },
     {
       "id": "NONE",
-      "name": "Gaming"
+      "name": "gaming"
     },
     {
       "id": "NONE",
-      "name": "Technology"
+      "name": "technology"
     },
     {
       "id": "NONE",
-      "name": "Science"
+      "name": "science"
     },
     {
       "id": "NONE",
-      "name": "Movies"
+      "name": "movies"
     },
     {
       "id": "NONE",
-      "name": "Sports"
+      "name": "sports"
     },
     {
       "id": "NONE",
-      "name": "News"
+      "name": "news"
     },
     {
       "id": "NONE",
-      "name": "Travel"
+      "name": "travel"
     },
     {
       "id": "NONE",
-      "name": "Lifestyle"
+      "name": "lifestyle"
     },
     {
       "id": "NONE",
-      "name": "Fashion"
+      "name": "fashion"
     },
     {
       "id": "NONE",
-      "name": "Health & Fitness"
+      "name": "health & fitness"
     },
     {
       "id": "NONE",
-      "name": "Food & Cooking"
+      "name": "food & cooking"
     },
     {
       "id": "NONE",
-      "name": "Comedy"
+      "name": "comedy"
     },
     {
       "id": "NONE",
-      "name": "Documentary"
+      "name": "documentary"
     },
     {
       "id": "NONE",
-      "name": "Art & Design"
+      "name": "art & design"
     },
     {
       "id": "NONE",
-      "name": "Business & Finance"
+      "name": "business & finance"
     },
     {
       "id": "NONE",
-      "name": "Animals & Nature"
+      "name": "animals & nature"
     },
     {
       "id": "NONE",
-      "name": "Automotive"
+      "name": "automotive"
     },
     {
       "id": "NONE",
-      "name": "History"
+      "name": "history"
     },
     {
       "id": "NONE",
-      "name": "Podcasts"
+      "name": "podcasts"
     },
     {
       "id": "NONE",
-      "name": "Shorts"
+      "name": "shorts"
     }
   ],
   "privacy_statuses": [

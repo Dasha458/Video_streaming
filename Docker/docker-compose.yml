@@ -7,16 +7,13 @@ services:
     expose:
       - "8000"
     depends_on:
-      elasticsearch:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-      ffmpeg:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
+      - postgres
+      - ffmpeg
+      - minio
+      - rabbitmq
+      - elasticsearch
+      - keycloak
+      - redis
     volumes:
       - ../backend/alembic/versions:/app/alembic/versions
     environment:
@@ -32,20 +29,15 @@ services:
       options:
         tag: "{{.ImageName}}|{{.Name}}|{{.ImageFullID}}|{{.FullID}}"
 
-
   frontend:
-      build:
-        context: ../frontend
-        dockerfile: Dockerfile
-      container_name: frontend_service
-      expose:
-        - "8001"
-      depends_on:
-        - postgres
-      develop:
-        watch:
-          - action: rebuild
-            path: ../frontend
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: frontend_service
+    expose:
+      - "8001"
+    depends_on:
+      - postgres
 
   postgres:
     build:
@@ -53,7 +45,7 @@ services:
       dockerfile: Dockerfile
     container_name: postgres_service
     environment:
-      POSTGRES_MULTIPLE_DATABASES: "${VIDEO_DB}"
+      POSTGRES_MULTIPLE_DATABASES: "${VIDEO_DB},${KEYCLOAK_DB}"
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
@@ -74,18 +66,13 @@ services:
         tag: "{{.ImageName}}|{{.Name}}|{{.ImageFullID}}|{{.FullID}}"
 
   redis:
-    image: redis:7-alpine
+    image: redis:latest
     container_name: redis_service
     expose:
       - "6379"
     volumes:
       - redis-data:/data
     restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
     logging:
       driver: "json-file"
       options:
@@ -96,27 +83,14 @@ services:
       context: ../services/convertor
       dockerfile: Dockerfile
     container_name: ffmpeg_service
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [ gpu ]
     environment:
       - VAULT_ADDR=${VAULT_ADDR}
       - VAULT_TOKEN=${VAULT_TOKEN}
-      - NVIDIA_VISIBLE_DEVICES=all
     expose:
-      - "9102"   # metrics ONLY
+      - "8002"
     depends_on:
       rabbitmq:
         condition: service_healthy
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://127.0.0.1:9102/api/health/live" ]
-      interval: 10s
-      timeout: 3s
-      retries: 3
     logging:
       driver: "json-file"
       options:
@@ -135,13 +109,8 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
       MINIO_ENDPOINT_URL: ${MINIO_ENDPOINT_URL}
       MINIO_REGION_NAME: ${MINIO_REGION_NAME}
-
       MINIO_BROWSER_REDIRECT_URL: http://localhost/minio/ui
       MINIO_PROMETHEUS_URL: http://prometheus:9090
-    #      MINIO_AUDIT_WEBHOOK_ENABLE_logger: "on"
-    #      MINIO_AUDIT_WEBHOOK_ENDPOINT_logger: "http://loki:3100/loki/api/v1/push"
-    #      MINIO_KMS_AUTO_ENCRYPTION: "on"
-    #      MINIO_KMS_MASTER_KEY: "my-key:32byteslongsecretkeymustbe!"
     command: minio server /minio_data --console-address ":9001"
     volumes:
       - minio_data:/minio_data
@@ -174,7 +143,7 @@ services:
         tag: "{{.ImageName}}|{{.Name}}|{{.ImageFullID}}|{{.FullID}}"
 
   rabbitmq:
-    image: rabbitmq:3.13-management-alpine
+    image: rabbitmq:3.8-management-alpine
     container_name: rabbit_broker
     restart: always
     expose:
@@ -183,7 +152,7 @@ services:
     healthcheck:
       test: [ "CMD-SHELL", "rabbitmqctl status" ]
       interval: 10s
-      timeout: 10s
+      timeout: 5s
       retries: 5
     logging:
       driver: "json-file"
@@ -236,10 +205,45 @@ services:
       - ../monitoring/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
       - grafana_data:/var/lib/grafana
 
+  keycloak:
+    image: keycloak/keycloak:latest
+    command: start-dev
+    expose:
+      - "8080"
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/${KEYCLOAK_DB}
+      KC_DB_SCHEMA: public
+      KC_DB_USERNAME: ${POSTGRES_USER}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      KC_HTTP_RELATIVE_PATH: /auth
+      KC_PROXY: edge
+      KC_HEALTH_ENABLED: "true"
+      KC_METRICS_ENABLED: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD-SHELL", "curl -f http://localhost:8080/health/ready || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        tag: "{{.ImageName}}|{{.Name}}|{{.ImageFullID}}|{{.FullID}}"
 
   vault:
     image: hashicorp/vault:latest
-    command: sh -c "chown -R vault:vault /opt/vault/data && vault server -config=/etc/vault/vault.hcl"
+    command: >
+      sh -c "
+        chown -R vault:vault /opt/vault/data &&
+        vault server -config=/etc/vault/vault.hcl &
+        VAULT_PID=$$! &&
+        sh /etc/vault/unseal.sh &&
+        wait $$VAULT_PID
+      "
     container_name: vault
     restart: always
     expose:
@@ -247,14 +251,18 @@ services:
     cap_add:
       - IPC_LOCK
     environment:
-      VAULT_ADDR: "http://vault:8200"
+      VAULT_ADDR: "http://127.0.0.1:8200"
       VAULT_API_ADDR: "http://vault:8200"
       VAULT_CLUSTER_ADDR: "http://vault:8201"
       VAULT_TOKEN: "${VAULT_TOKEN}"
+      VAULT_UNSEAL_KEY_1: "${VAULT_UNSEAL_KEY_1}"
+      VAULT_UNSEAL_KEY_2: "${VAULT_UNSEAL_KEY_2}"
     volumes:
       - vault_data:/opt/vault/data
       - ../vault/config:/etc/vault
       - ../vault/tls:/etc/vault/tls
+    depends_on:
+      - keycloak
     healthcheck:
       test: [ "CMD", "vault", "status", "-address=http://localhost:8200" ]
       interval: 10s
@@ -283,16 +291,15 @@ services:
     volumes:
       - es_data:/usr/share/elasticsearch/data
     expose:
-      - "9200"  # Elasticsearch REST API
+      - "9200"
     healthcheck:
-      test: [ "CMD-SHELL", "curl -fs -u elastic:${ELASTIC_PASSWORD} http://localhost:9200/_cluster/health >/dev/null || exit 1" ]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+      test: [ "CMD-SHELL", "curl -s http://localhost:9200 >/dev/null || exit 1" ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
 
 networks:
-  default:
-    name: video_streaming_network
+  video_streaming_network:
     external: true
 
 volumes:
@@ -306,4 +313,4 @@ volumes:
 # docker compose -p video_streaming_stack -f ./Docker/docker-compose.yml build
 # docker compose -p video_streaming_stack -f ./Docker/docker-compose.yml up -d
 
-#docker compose -p video_streaming_stack -f ./Docker/docker-compose.yml up -d --build
+#docker compose -p video_streaming_stack -f ./Docker/docker-compose.yml up -d --build  

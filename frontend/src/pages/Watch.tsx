@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import VideoPlayer from "@/components/VideoPlayer";
+import { useWatchSession } from "@/hooks/useWatchSession";
 import VideoCard from "@/components/VideoCard";
 import { Button } from "@/components/ui/button";
 import InfiniteScroll from "@/components/infinite-scroll";
 import { Link, useSearchParams } from "react-router-dom";
-import { ThumbsUp, ThumbsDown, Download, Share2, ChevronDown, ChevronUp } from "lucide-react";
+import { ThumbsUp, ThumbsDown, Download, Share2, ChevronDown, ChevronUp, Clock, ListPlus, Check } from "lucide-react";
+import { addToWatchLater } from "@api/watchLaterApi";
+import { getPlaylists, addToPlaylist, type PlaylistItem } from "@api/playlistApi";
 
 import { useFetchCategories } from "@/hooks/useCategories";
 import { useVideo } from "@/hooks/useVideos";
@@ -12,9 +15,10 @@ import { useReactions } from "@/hooks/useReactions";
 import { useDownload } from "@/hooks/useDownload";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSidebar } from "@/components/ui/sidebar";
-import { getComments, addComment, deleteComment, addReply, reactToComment } from "@api/commentApi";
+import { getComments, addComment, deleteComment, addReply, reactToComment, mapCommentFromApi } from "@api/commentApi";
 import type { VideoDetail, VideoComment, VideoPreviewWithTime } from "@api/types";
 import { timeAgo } from "@/utils/timeAgo";
+import { formatCount } from "@/utils/formatters";
 
 function Avatar({ src, name, size }: { src?: string; name?: string; size: number }) {
     const initial = (name ?? "?").charAt(0).toUpperCase();
@@ -24,12 +28,6 @@ function Avatar({ src, name, size }: { src?: string; name?: string; size: number
             {initial}
         </div>
     );
-}
-
-function formatCount(n: number) {
-    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-    if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-    return String(n);
 }
 
 export default function Watch() {
@@ -55,28 +53,22 @@ export default function Watch() {
     const [replySubmitting, setReplySubmitting] = useState(false);
     const [showDesc, setShowDesc] = useState(false);
     const [resolution, setResolution] = useState("720p");
+    const [watchLaterDone, setWatchLaterDone] = useState(false);
+    const [playlistDropOpen, setPlaylistDropOpen] = useState(false);
+    const [playlists, setPlaylists] = useState<PlaylistItem[]>([]);
+    const [addedToPlaylists, setAddedToPlaylists] = useState<Set<string>>(new Set());
+    const playlistDropRef = useRef<HTMLDivElement>(null);
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const fromApi = (c: any): VideoComment => ({
-        id: String(c.id),
-        userId: String(c.user_id ?? c.userId ?? ""),
-        content: c.content,
-        createdAt: c.created_at ?? c.createdAt ?? "",
-        videoId,
-        likesCount: c.likes_count ?? c.likesCount ?? 0,
-        dislikesCount: c.dislikes_count ?? c.dislikesCount ?? 0,
-        user_name: c.user_name,
-        user_avatar: c.user_avatar,
-        ...(Array.isArray(c.replies) ? { replies: c.replies.map(fromApi) } : {}),
-    });
+    // Watch-session heartbeat for creator analytics (watch time / retention).
+    const videoElementRef = useRef<HTMLVideoElement>(null);
+    useWatchSession(videoId || undefined, videoElementRef);
 
     useEffect(() => {
         if (!videoId) return;
         setComments([]);
         getComments(videoId, 1, 100)
-            .then((page) => setComments(page.items.map(fromApi)))
+            .then((page) => setComments(page.items.map(mapCommentFromApi)))
             .catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [videoId]);
 
     const handleAddComment = async (e: React.FormEvent) => {
@@ -86,7 +78,7 @@ export default function Watch() {
         setSubmitting(true);
         try {
             const c = await addComment(videoId, text);
-            setComments((prev) => [{ ...fromApi(c), replies: [] }, ...prev]);
+            setComments((prev) => [{ ...mapCommentFromApi(c), replies: [] }, ...prev]);
             setCommentText("");
         } finally { setSubmitting(false); }
     };
@@ -99,7 +91,7 @@ export default function Watch() {
         try {
             const r = await addReply(videoId, parentId, text);
             setComments((prev) => prev.map((c) =>
-                c.id === parentId ? { ...c, replies: [...(c.replies ?? []), fromApi(r)] } : c
+                c.id === parentId ? { ...c, replies: [...(c.replies ?? []), mapCommentFromApi(r)] } : c
             ));
             setReplyText(""); setReplyingTo(null);
         } finally { setReplySubmitting(false); }
@@ -132,6 +124,43 @@ export default function Watch() {
         } catch { /* ignore */ }
     };
 
+    const handleWatchLater = async () => {
+        if (!videoId || !user) return;
+        try {
+            await addToWatchLater(videoId);
+            setWatchLaterDone(true);
+        } catch { /* already added or error — ignore */ }
+    };
+
+    const openPlaylistDrop = async () => {
+        setPlaylistDropOpen((v) => !v);
+        if (playlists.length === 0 && user) {
+            try {
+                const data = await getPlaylists();
+                setPlaylists(data.items);
+            } catch { /* ignore */ }
+        }
+    };
+
+    const handleAddToPlaylist = async (playlistId: string) => {
+        if (!videoId) return;
+        try {
+            await addToPlaylist(playlistId, videoId);
+            setAddedToPlaylists((prev) => new Set(prev).add(playlistId));
+        } catch { /* ignore */ }
+    };
+
+    // Close playlist dropdown on outside click
+    useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (playlistDropRef.current && !playlistDropRef.current.contains(e.target as Node)) {
+                setPlaylistDropOpen(false);
+            }
+        };
+        document.addEventListener("mousedown", handler);
+        return () => document.removeEventListener("mousedown", handler);
+    }, []);
+
     const { handleDownload } = useDownload({ video: video as unknown as VideoDetail, resolution });
     const { handleReaction } = useReactions({
         initialVideo: video as unknown as VideoDetail,
@@ -159,7 +188,7 @@ export default function Watch() {
             <div className="w-full lg:flex-1 min-w-0">
                 {/* Player */}
                 <div className="rounded-xl overflow-hidden bg-black">
-                    <VideoPlayer src={video.hlsUrl} />
+                    <VideoPlayer ref={videoElementRef} src={video.hlsUrl} />
                 </div>
 
                 {/* Title */}
@@ -197,10 +226,56 @@ export default function Watch() {
                         </div>
 
                         {/* Share */}
-                        <button className="flex items-center gap-1.5 rounded-full bg-muted px-4 py-2 text-sm font-medium hover:bg-muted/70 transition-colors">
+                        <button
+                            className="flex items-center gap-1.5 rounded-full bg-muted px-4 py-2 text-sm font-medium hover:bg-muted/70 transition-colors"
+                            onClick={() => navigator.clipboard.writeText(window.location.href)}
+                        >
                             <Share2 className="h-4 w-4" />
                             Share
                         </button>
+
+                        {/* Watch Later */}
+                        {user && (
+                            <button
+                                className="flex items-center gap-1.5 rounded-full bg-muted px-4 py-2 text-sm font-medium hover:bg-muted/70 transition-colors"
+                                onClick={handleWatchLater}
+                                disabled={watchLaterDone}
+                            >
+                                {watchLaterDone ? <Check className="h-4 w-4 text-emerald-500" /> : <Clock className="h-4 w-4" />}
+                                {watchLaterDone ? "Saved" : "Watch Later"}
+                            </button>
+                        )}
+
+                        {/* Save to Playlist */}
+                        {user && (
+                            <div className="relative" ref={playlistDropRef}>
+                                <button
+                                    className="flex items-center gap-1.5 rounded-full bg-muted px-4 py-2 text-sm font-medium hover:bg-muted/70 transition-colors"
+                                    onClick={openPlaylistDrop}
+                                >
+                                    <ListPlus className="h-4 w-4" />
+                                    Save
+                                </button>
+                                {playlistDropOpen && (
+                                    <div className="absolute top-full mt-1 right-0 z-50 min-w-[180px] rounded-lg border bg-background shadow-md py-1">
+                                        {playlists.length === 0 ? (
+                                            <p className="px-4 py-2 text-sm text-muted-foreground">No playlists yet</p>
+                                        ) : (
+                                            playlists.map((pl) => (
+                                                <button
+                                                    key={pl.id}
+                                                    className="flex items-center justify-between w-full px-4 py-2 text-sm hover:bg-muted transition-colors"
+                                                    onClick={() => handleAddToPlaylist(pl.id)}
+                                                >
+                                                    <span className="truncate">{pl.name}</span>
+                                                    {addedToPlaylists.has(pl.id) && <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0 ml-2" />}
+                                                </button>
+                                            ))
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
 
                         {/* Download */}
                         <div className="flex items-center gap-1 rounded-full bg-muted overflow-hidden">
@@ -376,9 +451,9 @@ export default function Watch() {
                 </div>
 
                 <InfiniteScroll loadMore={loadMore} hasMore={hasMore}>
-                    <div className="space-y-3">
+                    <div className="flex flex-col gap-4">
                         {videos.map((v: VideoPreviewWithTime) => (
-                            <Link key={v.id} to={`/watch?v=${v.id}`}>
+                            <Link key={v.id} to={`/watch?v=${v.id}`} className="block">
                                 <VideoCard
                                     id={v.id}
                                     title={v.title}

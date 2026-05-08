@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import List, Optional
 
-from pydantic import Field, computed_field
+from pydantic import Field, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -49,6 +49,16 @@ class ElasticSettings(BaseAppSettings):
 
 class JWTSettings(BaseAppSettings):
     JWT_SECRET: str = Field(default="CHANGE-ME-IN-PRODUCTION")
+
+    @field_validator("JWT_SECRET")
+    @classmethod
+    def jwt_secret_must_be_strong(cls, v: str) -> str:
+        if v == "CHANGE-ME-IN-PRODUCTION" or len(v) < 32:
+            raise ValueError(
+                "JWT_SECRET must be set to a strong random value of at least 32 characters. "
+                "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+            )
+        return v
 
 
 class GitHubOAuthSettings(BaseAppSettings):

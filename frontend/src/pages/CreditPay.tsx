@@ -1,211 +1,137 @@
-// import {useState} from 'react'
-// import {zodResolver} from '@hookform/resolvers/zod'
-// import {useForm} from 'react-hook-form'
-// import {z} from 'zod'
-// import {toast} from 'sonner'
-//
-// import {Button} from '@/components/ui/button'
-// import {
-//     Form,
-//     FormControl,
-//     FormDescription,
-//     FormField,
-//     FormItem,
-//     FormLabel,
-//     FormMessage,
-// } from '@/components/ui/form'
-// import {CreditCard, type CreditCardValue} from '@/components/ui/credit-card'
-//
-// // Enhanced validation schema
-// const FormSchema = z
-//     .object({
-//         cardholderName: z
-//             .string()
-//             .min(2, 'Cardholder name must be at least 2 characters')
-//             .max(50, 'Cardholder name must be less than 50 characters'),
-//
-//         cardNumber: z
-//             .string()
-//             .min(1, 'Card number is required')
-//             .refine((value) => {
-//                 const cleanNumber = value.replace(/\s/g, '')
-//                 return /^\d{13,19}$/.test(cleanNumber)
-//             }, 'Invalid card number format'),
-//
-//         expiryMonth: z
-//             .string()
-//             .min(1, 'Expiry month is required')
-//             .refine((value) => {
-//                 const month = parseInt(value)
-//                 return month >= 1 && month <= 12
-//             }, 'Invalid month'),
-//
-//         expiryYear: z
-//             .string()
-//             .min(1, 'Expiry year is required')
-//             .refine((value) => {
-//                 const year = parseInt(value)
-//                 const currentYear = new Date().getFullYear()
-//                 return year >= currentYear && year <= currentYear + 20
-//             }, 'Invalid year'),
-//
-//         cvv: z
-//             .string()
-//             .min(3, 'CVV must be at least 3 digits')
-//             .max(4, 'CVV must be at most 4 digits')
-//             .refine((value) => /^\d+$/.test(value), 'CVV must contain only digits'),
-//     })
-//
-//     // Add expiry date validation
-//     .refine(
-//         (data) => {
-//             if (!data.expiryMonth || !data.expiryYear) return true // Let individual field validation handle this
-//
-//             const currentDate = new Date()
-//             const currentYear = currentDate.getFullYear()
-//             const currentMonth = currentDate.getMonth() + 1
-//             const expiryYear = parseInt(data.expiryYear)
-//             const expiryMonth = parseInt(data.expiryMonth)
-//
-//             return (
-//                 expiryYear > currentYear ||
-//                 (expiryYear === currentYear && expiryMonth >= currentMonth)
-//             )
-//         },
-//         {
-//             message: 'Card has expired',
-//             path: ['expiryYear'], // Show error on year field
-//         },
-//     )
-//
-// type CreditCardFormData = z.infer<typeof FormSchema>
-//
-// export function CreditCardForm() {
-//     const [creditCard, setCreditCard] = useState<CreditCardValue>({
-//         cardholderName: '',
-//         cardNumber: '',
-//         expiryMonth: '',
-//         expiryYear: '',
-//         cvv: '',
-//         cvvLabel: 'CVC' // or 'CCV'
-//     });
-//
-//
-//     const [isCardValid, setIsCardValid] = useState(false)
-//
-//     const form = useForm<CreditCardFormData>({
-//         resolver: zodResolver(FormSchema),
-//         defaultValues: {
-//             cardholderName: '',
-//             cardNumber: '',
-//             expiryMonth: '',
-//             expiryYear: '',
-//             cvv: '',
-//         },
-//         mode: 'onChange', // Enable real-time validation
-//     })
-//
-//     const handleCreditCardChange = (value: CreditCardValue) => {
-//         setCreditCard(value)
-//
-//         // Update form values
-//         form.setValue('cardholderName', value.cardholderName, {
-//             shouldValidate: true,
-//         })
-//         form.setValue('cardNumber', value.cardNumber, {shouldValidate: true})
-//         form.setValue('expiryMonth', value.expiryMonth, {shouldValidate: true})
-//         form.setValue('expiryYear', value.expiryYear, {shouldValidate: true})
-//         form.setValue('cvv', value.cvv, {shouldValidate: true})
-//     }
-//
-//     const handleValidationChange = (isValid: boolean, errors: any) => {
-//         setIsCardValid(isValid)
-//     }
-//
-//     const onSubmit = (data: CreditCardFormData) => {
-//         console.log('Form submitted:', data)
-//         toast.success(
-//             <div className="space-y-2">
-//                 <p className="font-semibold">Payment Information Submitted</p>
-//                 <pre className="mt-2 w-[340px] rounded-md bg-slate-950 p-4 text-xs">
-//           <code className="text-white">{JSON.stringify(data, null, 2)}</code>
-//         </pre>
-//             </div>,
-//         )
-//     }
-//
-//     return (
-//         <div className="max-w-md mx-auto p-6 space-y-6">
-//             <div className="text-center">
-//                 <h2 className="text-2xl font-bold">Payment Information</h2>
-//                 <p className="text-muted-foreground">Enter your credit card details</p>
-//             </div>
-//
-//             <Form {...form}>
-//                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-//                     <FormField
-//                         control={form.control}
-//                         name="cardholderName"
-//                         render={({field}) => (
-//                             <FormItem className="flex flex-col">
-//                                 <FormLabel>Credit Card Information</FormLabel>
-//                                 <FormControl>
-//                                     <CreditCard
-//                                         value={creditCard}
-//                                         onChange={handleCreditCardChange}
-//                                         onValidationChange={handleValidationChange}
-//                                         cvvLabel="CVC"
-//                                         cardStyle="shiny-silver"
-//                                         showVendor={true}
-//                                         className="w-full"
-//                                     />
-//                                 </FormControl>
-//                                 <FormDescription>
-//                                     All fields are required. Your information is secure and
-//                                     encrypted.
-//                                 </FormDescription>
-//                                 <FormMessage/>
-//                             </FormItem>
-//                         )}
-//                     />
-//
-//                     {/* Hidden fields to capture validation errors */}
-//                     <div className="hidden">
-//                         <FormField
-//                             control={form.control}
-//                             name="cardNumber"
-//                             render={() => <FormMessage/>}
-//                         />
-//                         <FormField
-//                             control={form.control}
-//                             name="expiryMonth"
-//                             render={() => <FormMessage/>}
-//                         />
-//                         <FormField
-//                             control={form.control}
-//                             name="expiryYear"
-//                             render={() => <FormMessage/>}
-//                         />
-//                         <FormField
-//                             control={form.control}
-//                             name="cvv"
-//                             render={() => <FormMessage/>}
-//                         />
-//                     </div>
-//
-//                     <div className="space-y-4">
-//                         <Button
-//                             type="submit"
-//                             className="w-full"
-//                             disabled={!form.formState.isValid || !isCardValid}
-//                         >
-//                             {form.formState.isSubmitting
-//                                 ? 'Processing...'
-//                                 : 'Process Payment'}
-//                         </Button>
-//                     </div>
-//                 </form>
-//             </Form>
-//         </div>
-//     )
-// }
+import { useState } from "react";
+import { CreditCard, Lock, CheckCircle2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Link } from "react-router-dom";
+
+function formatCardNumber(v: string) {
+    return v.replace(/\D/g, "").slice(0, 16).replace(/(.{4})/g, "$1 ").trim();
+}
+function formatExpiry(v: string) {
+    const digits = v.replace(/\D/g, "").slice(0, 4);
+    if (digits.length >= 3) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    return digits;
+}
+
+export default function CreditPay() {
+    const [cardNumber, setCardNumber] = useState("");
+    const [cardHolder, setCardHolder] = useState("");
+    const [expiry, setExpiry] = useState("");
+    const [cvv, setCvv] = useState("");
+    const [loading, setLoading] = useState(false);
+    const [success, setSuccess] = useState(false);
+    const [errors, setErrors] = useState<Record<string, string>>({});
+
+    const validate = () => {
+        const e: Record<string, string> = {};
+        if (cardNumber.replace(/\s/g, "").length < 16) e.cardNumber = "Enter a valid 16-digit card number";
+        if (!cardHolder.trim()) e.cardHolder = "Cardholder name is required";
+        const [m, y] = expiry.split("/");
+        const now = new Date();
+        const expMonth = parseInt(m ?? "0");
+        const expYear = parseInt("20" + (y ?? "0"));
+        if (!m || !y || expMonth < 1 || expMonth > 12 || expYear < now.getFullYear() ||
+            (expYear === now.getFullYear() && expMonth < now.getMonth() + 1)) {
+            e.expiry = "Invalid or expired date";
+        }
+        if (cvv.replace(/\D/g, "").length < 3) e.cvv = "CVV must be 3–4 digits";
+        return e;
+    };
+
+    const handleSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const errs = validate();
+        setErrors(errs);
+        if (Object.keys(errs).length > 0) return;
+        setLoading(true);
+        await new Promise((r) => setTimeout(r, 1200));
+        setLoading(false);
+        setSuccess(true);
+    };
+
+    if (success) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 text-center">
+                <CheckCircle2 className="h-16 w-16 text-emerald-500 mb-4" />
+                <h2 className="text-2xl font-bold mb-2">Payment successful!</h2>
+                <p className="text-muted-foreground mb-6">Your subscription has been activated.</p>
+                <Button asChild className="rounded-full">
+                    <Link to="/">Back to home</Link>
+                </Button>
+            </div>
+        );
+    }
+
+    return (
+        <div className="max-w-md mx-auto px-4 py-10">
+            <div className="flex items-center gap-2 mb-6">
+                <CreditCard className="h-6 w-6" />
+                <h1 className="text-2xl font-bold">Payment</h1>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                    <Label htmlFor="cardNumber">Card number</Label>
+                    <Input
+                        id="cardNumber"
+                        placeholder="1234 5678 9012 3456"
+                        value={cardNumber}
+                        onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
+                        inputMode="numeric"
+                        className="mt-1"
+                    />
+                    {errors.cardNumber && <p className="text-xs text-red-500 mt-1">{errors.cardNumber}</p>}
+                </div>
+
+                <div>
+                    <Label htmlFor="cardHolder">Cardholder name</Label>
+                    <Input
+                        id="cardHolder"
+                        placeholder="John Doe"
+                        value={cardHolder}
+                        onChange={(e) => setCardHolder(e.target.value)}
+                        className="mt-1"
+                    />
+                    {errors.cardHolder && <p className="text-xs text-red-500 mt-1">{errors.cardHolder}</p>}
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <Label htmlFor="expiry">Expiry</Label>
+                        <Input
+                            id="expiry"
+                            placeholder="MM/YY"
+                            value={expiry}
+                            onChange={(e) => setExpiry(formatExpiry(e.target.value))}
+                            inputMode="numeric"
+                            className="mt-1"
+                        />
+                        {errors.expiry && <p className="text-xs text-red-500 mt-1">{errors.expiry}</p>}
+                    </div>
+                    <div>
+                        <Label htmlFor="cvv">CVV</Label>
+                        <Input
+                            id="cvv"
+                            placeholder="123"
+                            value={cvv}
+                            onChange={(e) => setCvv(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                            inputMode="numeric"
+                            className="mt-1"
+                        />
+                        {errors.cvv && <p className="text-xs text-red-500 mt-1">{errors.cvv}</p>}
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-2">
+                    <Lock className="h-3 w-3" />
+                    Your payment information is encrypted and secure.
+                </div>
+
+                <Button type="submit" className="w-full" disabled={loading}>
+                    {loading ? "Processing…" : "Pay now"}
+                </Button>
+            </form>
+        </div>
+    );
+}

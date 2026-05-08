@@ -27,6 +27,8 @@ from src.schemas.user import (
     UserCreate,
     UserPublic,
     UserRead,
+    UserUpdateRequest,
+    PasswordChangeRequest,
 )
 
 _github_settings = get_github_oauth_settings()
@@ -84,6 +86,43 @@ async def logout() -> dict:
 @router_auth.get("/me", response_model=UserPublic)
 async def get_me(user: User = Depends(current_active_user)) -> UserPublic:
     return UserPublic.model_validate(user)
+
+
+@router_auth.patch("/me", response_model=UserPublic)
+async def update_me(
+    data: UserUpdateRequest,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+) -> UserPublic:
+    if data.username is not None:
+        name = data.username.strip()
+        if not name:
+            raise HTTPException(status_code=422, detail="Username cannot be empty")
+        existing = await session.scalar(select(User).where(User.username == name, User.id != user.id))
+        if existing:
+            raise HTTPException(status_code=409, detail="Username already taken")
+        user.username = name
+    await session.commit()
+    await session.refresh(user)
+    return UserPublic.model_validate(user)
+
+
+@router_auth.post("/me/change-password", status_code=204)
+async def change_password(
+    data: PasswordChangeRequest,
+    user: User = Depends(current_active_user),
+    session: AsyncSession = Depends(get_async_session),
+    user_manager=Depends(get_user_manager),
+) -> None:
+    try:
+        await user_manager.authenticate(
+            type("Credentials", (), {"username": user.email, "password": data.current_password})()
+        )
+    except Exception:
+        raise HTTPException(status_code=400, detail="Current password is incorrect")
+    hashed = user_manager.password_helper.hash(data.new_password)
+    user.hashed_password = hashed
+    await session.commit()
 
 
 @router_auth.get("/admin")

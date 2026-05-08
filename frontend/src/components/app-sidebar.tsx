@@ -39,7 +39,7 @@ function NavItem({ icon: Icon, label, to }: { icon: React.ElementType; label: st
     return (
         <Link
             to={to}
-            className={`flex items-center gap-5 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors
+            className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-colors
                 ${active
                     ? "bg-muted font-semibold"
                     : "hover:bg-muted/60 text-foreground/80 hover:text-foreground"

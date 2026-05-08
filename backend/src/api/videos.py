@@ -103,10 +103,21 @@ async def get_video_info(
     video_id: UUID = Path(
         ..., description="UUID of the video to retrieve playback info for."
     ),
+    source: str | None = Query(
+        default=None,
+        max_length=32,
+        description=(
+            "Traffic source hint tagged on the resulting VideoView: "
+            "direct | search | recommendation | external | channel_page | "
+            "playlist | subscriptions."
+        ),
+    ),
     user_id: UUID | None = Depends(get_optional_user_id),
     service: VideoService = Depends(get_video_service),
 ) -> VideoPlayback:
-    return await service.get_playback(video_id=video_id, user_id=user_id)
+    return await service.get_playback(
+        video_id=video_id, user_id=user_id, source_type=source
+    )
 
 
 @router_videos.get(

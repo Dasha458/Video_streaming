@@ -16,6 +16,7 @@ from .video_reactions import VideoReaction
 from .video_resolutions import VideoResolution
 from .video_status import VideoStatus
 from .video_views import VideoView
+from .video_watch_session import VideoWatchSession
 from .watch_history import WatchHistory
 from .watch_later import WatchLater
 

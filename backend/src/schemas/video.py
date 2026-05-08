@@ -1,11 +1,23 @@
 from datetime import datetime
 from typing import Annotated, Generic, List, Literal, Optional, TypeVar
-from uuid import UUID
+from uuid import UUID, uuid5, NAMESPACE_DNS
 
 from fastapi import File, Form, UploadFile
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from src.models import Video
+
+# Deterministic UUIDs for status/privacy — same as app code, avoid lazy loading
+_STATUS_ID_MAP: dict[UUID, str] = {
+    uuid5(NAMESPACE_DNS, "video_status:ready"):      "Ready",
+    uuid5(NAMESPACE_DNS, "video_status:processing"): "Processing",
+    uuid5(NAMESPACE_DNS, "video_status:queued"):     "Queued",
+    uuid5(NAMESPACE_DNS, "video_status:failed"):     "Failed",
+}
+_PRIVACY_ID_MAP: dict[UUID, str] = {
+    uuid5(NAMESPACE_DNS, "privacy_status:public"):  "public",
+    uuid5(NAMESPACE_DNS, "privacy_status:private"): "private",
+}
 
 T = TypeVar("T")
 
@@ -101,6 +113,10 @@ class VideoPreview(BaseModel):
     channel_avatar: str
     channel_name: str
     views_count: int
+    likes_count: int
+    dislikes_count: int
+    privacy: str
+    status: str
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -111,9 +127,13 @@ def to_video_preview(video: Video) -> VideoPreview:
         id=video.id,
         title=video.name,
         thumbnail=video.thumbnail_path or "",
-        channel_avatar=getattr(video.channel, "avatar_url", ""),
+        channel_avatar=getattr(video.channel, "avatar_path", "") or "",
         channel_name=getattr(video.channel, "name", "Unknown Channel"),
         views_count=video.views_count,
+        likes_count=video.likes_count,
+        dislikes_count=video.dislikes_count,
+        privacy=_PRIVACY_ID_MAP.get(video.privacy_id, "public"),
+        status=_STATUS_ID_MAP.get(video.status_id, "Ready"),
         created_at=video.created_at,
     )
 

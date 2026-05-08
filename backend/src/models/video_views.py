@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Index, func
+from sqlalchemy import DateTime, ForeignKey, Index, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -29,6 +29,12 @@ class VideoView(Base):
     viewed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+    # Traffic source: "direct", "search", "recommendation", "external",
+    # "channel_page", "playlist", "subscriptions", "unknown".
+    # Nullable for backfilled historical rows.
+    source_type: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, server_default="unknown"
+    )
 
     # ---- Relationships ----
     video: Mapped["Video"] = relationship(back_populates="views")
@@ -37,6 +43,8 @@ class VideoView(Base):
     __table_args__ = (
         Index("ix_video_views_video_id", "video_id"),
         Index("ix_video_views_user_id", "user_id"),
+        Index("ix_video_views_viewed_at", "viewed_at"),
+        Index("ix_video_views_source_type", "source_type"),
         Index(
             "uq_video_views_video_user",
             "video_id",

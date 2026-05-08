@@ -12,7 +12,6 @@ export interface ChannelInfo {
 }
 
 export interface VideoPreview {
-  // name can be present from some server responses but isn't always required
   name?: string;
   thumbnail_url?: string;
   channel_name?: string;
@@ -27,6 +26,7 @@ export interface VideoPreview {
   publishedAt: string;
   dislikesCount: number;
   privacy: string;
+  status?: string;
 }
 
 export interface Video {
