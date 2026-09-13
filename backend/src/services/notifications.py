@@ -1,9 +1,9 @@
-from typing import List, Tuple
 from uuid import UUID
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.pagination import paginate_query
 from src.errors.notifications import NotificationNotFoundError
 from src.models import Notification
 from src.schemas.notification import NotificationResponse, NotificationsPage
@@ -14,11 +14,15 @@ class NotificationService:
         self.session = session
 
     async def list(self, user_id: UUID, page: int, size: int) -> NotificationsPage:
-        total = await self.session.scalar(
-            select(func.count())
-            .select_from(Notification)
-            .where(Notification.user_id == user_id)
-        ) or 0
+        items, total = await paginate_query(
+            self.session,
+            Notification,
+            page=page,
+            size=size,
+            filters=[Notification.user_id == user_id],
+            order_by=Notification.created_at.desc(),
+            mapper=NotificationResponse.model_validate,
+        )
 
         unread_count = await self.session.scalar(
             select(func.count())
@@ -26,15 +30,6 @@ class NotificationService:
             .where(Notification.user_id == user_id, Notification.is_read == False)  # noqa: E712
         ) or 0
 
-        result = await self.session.execute(
-            select(Notification)
-            .where(Notification.user_id == user_id)
-            .order_by(Notification.created_at.desc())
-            .offset((page - 1) * size)
-            .limit(size)
-        )
-        notifications = result.scalars().all()
-        items = [NotificationResponse.model_validate(n) for n in notifications]
         return NotificationsPage(items=items, unread_count=unread_count, total=total)
 
     async def mark_read(self, user_id: UUID, notification_id: UUID) -> None:

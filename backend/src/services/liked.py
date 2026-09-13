@@ -1,10 +1,11 @@
 from typing import List, Tuple
-from uuid import UUID, NAMESPACE_DNS, uuid5
+from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from src.core.pagination import paginate_query
 from src.models import ReactionType, Video, VideoReaction
 from src.schemas.video import VideoPreview, to_video_preview
 
@@ -20,30 +21,22 @@ class LikedService:
         if not like_type:
             return [], 0
 
-        total = await self.session.scalar(
-            select(func.count())
-            .select_from(VideoReaction)
-            .where(
+        return await paginate_query(
+            self.session,
+            Video,
+            page=page,
+            size=size,
+            filters=[
                 VideoReaction.user_id == user_id,
                 VideoReaction.reaction_type_id == like_type.id,
-            )
-        ) or 0
-
-        result = await self.session.execute(
-            select(Video)
-            .join(VideoReaction, VideoReaction.video_id == Video.id)
-            .where(
-                VideoReaction.user_id == user_id,
-                VideoReaction.reaction_type_id == like_type.id,
-            )
-            .options(
+            ],
+            count_from=VideoReaction,
+            joins=[(VideoReaction, VideoReaction.video_id == Video.id)],
+            order_by=VideoReaction.created_at.desc(),
+            preload=[
                 selectinload(Video.channel),
                 selectinload(Video.privacy),
                 selectinload(Video.resolutions),
-            )
-            .order_by(VideoReaction.created_at.desc())
-            .offset((page - 1) * size)
-            .limit(size)
+            ],
+            mapper=to_video_preview,
         )
-        videos = result.scalars().all()
-        return [to_video_preview(v) for v in videos], total
