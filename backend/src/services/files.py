@@ -10,6 +10,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.status_ids import STATUS_QUEUED_ID, STATUS_READY_ID, privacy_id_for
 from src.errors.files import (
     ChannelNotFoundError,
     DuplicateVideoError,
@@ -133,9 +134,9 @@ class FileService:
                 hash=video_hash,
                 video_path=None,
                 thumbnail_path=None,
-                privacy_id=uuid5(NAMESPACE_DNS, f"privacy_status:{privacy.lower()}"),
+                privacy_id=privacy_id_for(privacy),
                 category_id=uuid5(NAMESPACE_DNS, f"video_category:{category.lower()}"),
-                status_id=uuid5(NAMESPACE_DNS, "video_status:queued"),
+                status_id=STATUS_QUEUED_ID,
             )
             .on_conflict_do_nothing(index_elements=["hash"])
             .returning(Video.id)
@@ -272,7 +273,7 @@ class FileService:
             .where(
                 Video.id == video_id,
                 Channel.user_id == user_id,
-                Video.status_id == uuid.uuid5(uuid.NAMESPACE_DNS, "video_status:ready"),
+                Video.status_id == STATUS_READY_ID,
             )
         )
         video = result.scalar_one_or_none()

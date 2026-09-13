@@ -1,23 +1,12 @@
 from datetime import datetime
 from typing import Annotated, Generic, List, Literal, Optional, TypeVar
-from uuid import UUID, uuid5, NAMESPACE_DNS
+from uuid import UUID
 
 from fastapi import File, Form, UploadFile
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from src.core.status_ids import PRIVACY_LABELS, STATUS_LABELS
 from src.models import Video
-
-# Deterministic UUIDs for status/privacy — same as app code, avoid lazy loading
-_STATUS_ID_MAP: dict[UUID, str] = {
-    uuid5(NAMESPACE_DNS, "video_status:ready"):      "Ready",
-    uuid5(NAMESPACE_DNS, "video_status:processing"): "Processing",
-    uuid5(NAMESPACE_DNS, "video_status:queued"):     "Queued",
-    uuid5(NAMESPACE_DNS, "video_status:failed"):     "Failed",
-}
-_PRIVACY_ID_MAP: dict[UUID, str] = {
-    uuid5(NAMESPACE_DNS, "privacy_status:public"):  "public",
-    uuid5(NAMESPACE_DNS, "privacy_status:private"): "private",
-}
 
 T = TypeVar("T")
 
@@ -132,8 +121,8 @@ def to_video_preview(video: Video) -> VideoPreview:
         views_count=video.views_count,
         likes_count=video.likes_count,
         dislikes_count=video.dislikes_count,
-        privacy=_PRIVACY_ID_MAP.get(video.privacy_id, "public"),
-        status=_STATUS_ID_MAP.get(video.status_id, "Ready"),
+        privacy=PRIVACY_LABELS.get(video.privacy_id, "public"),
+        status=STATUS_LABELS.get(video.status_id, "Ready"),
         created_at=video.created_at,
     )
 
