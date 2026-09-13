@@ -4,16 +4,19 @@ import "./styles/index.css";
 import { BrowserRouter } from "react-router-dom";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import AppRouter from "@/routes/AppRouter";
 
 createRoot(document.getElementById("root")!).render(
     <StrictMode>
-        <BrowserRouter>
-            <AuthProvider>
-                <ThemeProvider>
-                    <AppRouter />
-                </ThemeProvider>
-            </AuthProvider>
-        </BrowserRouter>
+        <ErrorBoundary>
+            <BrowserRouter>
+                <AuthProvider>
+                    <ThemeProvider>
+                        <AppRouter />
+                    </ThemeProvider>
+                </AuthProvider>
+            </BrowserRouter>
+        </ErrorBoundary>
     </StrictMode>
 );
