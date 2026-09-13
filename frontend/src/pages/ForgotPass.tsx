@@ -9,7 +9,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { toast } from "react-hot-toast";
+import { toast } from "@/components/ui/toast/use-toast";
 import { sendPasswordReset } from "@api/authApi";
 
 export default function ForgotPass() {
@@ -20,18 +20,18 @@ export default function ForgotPass() {
         e.preventDefault();
 
         if (!email) {
-            toast.error("Please enter your email");
+            toast({ title: "Please enter your email", variant: "destructive" });
             return;
         }
 
         try {
             setLoading(true);
             await sendPasswordReset(email);
-            toast.success("Password reset email sent!");
+            toast({ title: "Password reset email sent!" });
             setEmail("");
         } catch (err: unknown) {
             console.error(err);
-            toast.error("Failed to send reset email");
+            toast({ title: "Failed to send reset email", variant: "destructive" });
         } finally {
             setLoading(false);
         }

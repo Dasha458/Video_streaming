@@ -10,7 +10,7 @@ import {
 import {Input} from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useState } from "react";
-import { toast } from "react-hot-toast";
+import { toast } from "@/components/ui/toast/use-toast";
 import { checkUserExists, getGithubAuthUrl } from "@api/authApi";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -37,7 +37,7 @@ export function RegisterForm({
             const url = await getGithubAuthUrl();
             window.location.href = url;
         } catch {
-            toast.error("Failed to connect to GitHub");
+            toast({ title: "Failed to connect to GitHub", variant: "destructive" });
             setGithubLoading(false);
         }
     };
@@ -74,7 +74,7 @@ export function RegisterForm({
         try {
             setLoading(true);
             await register(email, password);
-            toast.success("Registration successful");
+            toast({ title: "Registration successful" });
             navigate("/");
         } catch (err: unknown) {
             setError(getApiErrorMessage(err, "Registration failed. Please try again."));

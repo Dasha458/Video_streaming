@@ -7,7 +7,7 @@ import {
 import { timeAgo } from "@/utils/timeAgo";
 import videoApi from "@api/videoApi";
 import type { VideoPreview } from "@api/types";
-import { toast } from "react-hot-toast";
+import { toast } from "@/components/ui/toast/use-toast";
 
 type StatusFilter = "all" | "public" | "private" | "processing";
 
@@ -56,9 +56,9 @@ function VideoMenu({ video, onPrivacyChange, onDelete }: {
                 try {
                     await videoApi.updateVideoPrivacy(video.id, !isPublic);
                     onPrivacyChange(video.id, !isPublic);
-                    toast.success(isPublic ? "Video set to private" : "Video set to public");
+                    toast({ title: isPublic ? "Video set to private" : "Video set to public" });
                 } catch {
-                    toast.error("Failed to update privacy");
+                    toast({ title: "Failed to update privacy", variant: "destructive" });
                 }
                 setOpen(false);
             },
@@ -71,9 +71,9 @@ function VideoMenu({ video, onPrivacyChange, onDelete }: {
                 try {
                     await videoApi.deleteVideo(video.id);
                     onDelete(video.id);
-                    toast.success("Video deleted");
+                    toast({ title: "Video deleted" });
                 } catch {
-                    toast.error("Failed to delete video");
+                    toast({ title: "Failed to delete video", variant: "destructive" });
                 }
                 setOpen(false);
             },

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { toast } from "react-hot-toast";
+import { toast } from "@/components/ui/toast/use-toast";
 
 export default function GitHubCallback() {
     const [searchParams] = useSearchParams();
@@ -15,14 +15,14 @@ export default function GitHubCallback() {
 
         const token = searchParams.get("token");
         if (!token) {
-            toast.error("GitHub login failed: no token received");
+            toast({ title: "GitHub login failed: no token received", variant: "destructive" });
             navigate("/login", { replace: true });
             return;
         }
 
         localStorage.setItem("token", token);
         refreshUser().then(() => {
-            toast.success("Logged in with GitHub");
+            toast({ title: "Logged in with GitHub" });
             navigate("/", { replace: true });
         });
     }, []);
