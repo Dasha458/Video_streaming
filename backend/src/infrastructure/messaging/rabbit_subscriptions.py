@@ -71,6 +71,11 @@ video_status_dlq_queue = RabbitQueue(
     routing_key="video.encode.status.dlq",
 )
 
+# Statuses the encoder is allowed to report. Kept in sync with
+# src/schemas/video.py's _STATUS_ID_MAP until this is centralized
+# (see src/core/status_ids.py in a later refactor).
+_KNOWN_ENCODER_STATUSES = frozenset({"ready", "processing", "queued", "failed"})
+
 
 @rabbit_router.subscriber(
     queue=video_status_queue,
@@ -89,9 +94,11 @@ async def status_handler(
             f"{msg.resolutions}, {msg.video_path} updating database"
         )
 
-        status_id = uuid5(NAMESPACE_DNS, f"video_status:{msg.status.lower()}")
-        if not status_id:
+        normalized_status = msg.status.lower()
+        if normalized_status not in _KNOWN_ENCODER_STATUSES:
             raise UnknownEncoderStatusError(msg.status)
+
+        status_id = uuid5(NAMESPACE_DNS, f"video_status:{normalized_status}")
 
         await session.execute(
             update(Video)
