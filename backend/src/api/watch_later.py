@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from src.api.dependencies.services import get_watch_later_service
 from src.schemas.endpoint import ErrorResponse, PaginationQuery
 from src.schemas.watch_later import WatchLaterPage
-from src.services.auth import get_current_user_id
+from src.services.dependencies import get_current_user_id
 from src.services.watch_later import WatchLaterService
 
 router_watch_later = APIRouter(

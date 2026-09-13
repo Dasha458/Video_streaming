@@ -22,7 +22,7 @@ from src.schemas.endpoint import (
 )
 from src.schemas.files import SignedUrlResponse, SignUrlQuery
 from src.schemas.video import VideoDownloadQuery, VideoUploadParams
-from src.services.auth import get_current_user_id
+from src.services.dependencies import get_current_user_id
 from src.services.file_signing import FileSigningService
 from src.services.files import FileService
 

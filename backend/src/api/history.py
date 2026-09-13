@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from src.api.dependencies.services import get_history_service
 from src.schemas.endpoint import ErrorResponse, PaginationQuery
 from src.schemas.history import HistoryPage
-from src.services.auth import get_current_user_id
+from src.services.dependencies import get_current_user_id
 from src.services.history import HistoryService
 
 router_history = APIRouter(

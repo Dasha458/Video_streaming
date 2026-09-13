@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from src.api.dependencies.services import get_notification_service
 from src.schemas.endpoint import ErrorResponse, PaginationQuery
 from src.schemas.notification import NotificationsPage
-from src.services.auth import get_current_user_id
+from src.services.dependencies import get_current_user_id
 from src.services.notifications import NotificationService
 
 router_notifications = APIRouter(

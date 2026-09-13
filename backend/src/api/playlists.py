@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from src.api.dependencies.services import get_playlist_service
 from src.schemas.endpoint import ErrorResponse, PaginationQuery
 from src.schemas.playlist import PlaylistCreate, PlaylistDetailResponse, PlaylistResponse, PlaylistsPage
-from src.services.auth import get_current_user_id
+from src.services.dependencies import get_current_user_id
 from src.services.playlists import PlaylistService
 
 router_playlists = APIRouter(
