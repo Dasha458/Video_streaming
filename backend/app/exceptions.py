@@ -25,7 +25,7 @@ def register_exception_handlers(app):
         logging.exception(f"Unhandled error: {exc}")
         return JSONResponse(
             status_code=500,
-            content={"detail": "Internal server error"},
+            content={"code": "INTERNAL_SERVER_ERROR", "message": "Internal server error"},
         )
 
     @app.exception_handler(RequestValidationError)
@@ -46,8 +46,7 @@ def register_exception_handlers(app):
         return JSONResponse(
             status_code=400,
             content={
-                "status": "error",
-                "code": 400,
+                "code": "VALIDATION_ERROR",
                 "message": "Validation failed",
                 "errors": errors,
             },
