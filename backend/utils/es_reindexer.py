@@ -56,7 +56,10 @@ async def reindex_videos_from_db(batch_size: int = 500) -> None:
                     "name": name,
                     "description": description,
                     "channel_id": str(v.channel_id),
-                    "category": category,
+                    "channel_name": v.channel.name if v.channel else "",
+                    "category": v.category.name if v.category else None,
+                    "thumbnail_url": v.thumbnail_path or "",
+                    "created_at": v.created_at.isoformat() if v.created_at else "",
                     "views": v.views_count or 0,
                     "suggest_name": {
                         "input": suggestion_inputs,

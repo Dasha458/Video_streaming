@@ -1,7 +1,7 @@
-from typing import List, Optional
+from typing import Any, List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class VideoIndexDocument(BaseModel):
@@ -81,8 +81,15 @@ class VideoResult(BaseModel):
     id: UUID
     name: str
     description: Optional[str] = None
-    category: Optional[str] = None
-    views: int
+    category: Optional[Any] = None          # list or str coming from ES
+    views: int = 0
+    thumbnail_url: Optional[str] = None
+    channel_name: Optional[str] = None
+    channel_id: Optional[str] = None
+    created_at: Optional[str] = None
+    score: Optional[float] = None
+
+    model_config = ConfigDict(extra="ignore")
 
 
 class VideoSearchResponse(BaseModel):

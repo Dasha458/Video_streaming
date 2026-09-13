@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import {
     Dialog,
     DialogContent,
+    DialogDescription,
     DialogHeader,
     DialogTitle,
     DialogFooter,
@@ -140,6 +141,9 @@ export default function Playlists() {
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
                         <DialogTitle>New playlist</DialogTitle>
+                        <DialogDescription>
+                            Give your playlist a name and an optional description.
+                        </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-3 py-2">
                         <Input

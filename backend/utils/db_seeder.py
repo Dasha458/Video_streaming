@@ -6,6 +6,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import NAMESPACE_DNS, UUID, uuid5
 
+from fastapi_users.password import PasswordHelper
+
+_password_helper = PasswordHelper()
+# All seed users share this password. Change before deploying to production.
+SEED_PASSWORD = "Test1234!"
+_SEED_HASHED_PASSWORD = _password_helper.hash(SEED_PASSWORD)
+
 import aiofiles
 import httpx
 from fastapi import UploadFile
@@ -247,7 +254,7 @@ async def seed_users_channels_videos(session) -> None:
                 "id": user_id,
                 "username": username,
                 "email": u["email"],
-                "hashed_password": "$2b$12$seedhashplaceholder000000000000000000000000000000000",
+                "hashed_password": _SEED_HASHED_PASSWORD,
                 "is_active": True,
                 "is_superuser": u["role"] == "admin",
                 "is_verified": True,

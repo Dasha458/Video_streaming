@@ -388,8 +388,8 @@ const VideoPlayer = forwardRef<HTMLVideoElement, VideoPlayerProps>(
                             )}
                         </div>
 
-                        {/* Quality selector */}
-                        {qualityLevels.length > 1 && (
+                        {/* Quality selector — always visible when HLS is supported */}
+                        {Hls.isSupported() && (
                             <div className="relative">
                                 <button
                                     onClick={() => {

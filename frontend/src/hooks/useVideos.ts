@@ -1,7 +1,6 @@
 import { useState, useCallback, useEffect, useMemo } from "react";
-import { getVideos, getVideo } from "@api/videoApi";
+import { getVideos, getVideo, getVideoPreviewsByCategory } from "@api/videoApi";
 import { timeAgo } from "@/utils/timeAgo";
-// ����������: VideoPreviewWithTime �����������, Remove explicit UseVideoResult import to let TS infer return type
 import type {
   VideoComment,
   VideoDetail,
@@ -13,7 +12,7 @@ import { search } from "@api/searchApi";
 
 // ���̲���: ������ UseVideoResult �������� � ���������� TypeScript ������� ��� ����������.
 
-export function useVideo() {
+export function useVideo(activeCategory: string = "All") {
   const [searchParams] = useSearchParams();
   const videoId = searchParams.get("v");
 
@@ -80,7 +79,10 @@ export function useVideo() {
 
     try {
       const nextPage = page + 1;
-      const newVideos = await getVideos({ page: nextPage });
+      const newVideos =
+        activeCategory && activeCategory !== "All"
+          ? await getVideoPreviewsByCategory(activeCategory, nextPage)
+          : await getVideos({ page: nextPage });
 
       const videosWithTime: VideoPreviewWithTime[] = newVideos
         .filter((v) => v.id !== videoId)
@@ -95,7 +97,7 @@ export function useVideo() {
     } catch (err) {
       console.error(err);
     }
-  }, [page, hasMore, loading, videoId, setVideos, setPage, setHasMore]);
+  }, [page, hasMore, loading, videoId, activeCategory, setVideos, setPage, setHasMore]);
 
   const loadMoreSearchResults = useCallback(async () => {
     if (!hasMore || loading) return;
@@ -135,7 +137,10 @@ export function useVideo() {
   const fetchInitialVideos = useCallback(async () => {
     try {
       setLoading(true);
-      const firstVideos = await getVideos({ page: 1 });
+      const firstVideos =
+        activeCategory && activeCategory !== "All"
+          ? await getVideoPreviewsByCategory(activeCategory, 1)
+          : await getVideos({ page: 1 });
 
       const initialVideosWithTime: VideoPreviewWithTime[] = firstVideos
         .filter((v) => v.id !== videoId)
@@ -152,7 +157,7 @@ export function useVideo() {
     } finally {
       setLoading(false);
     }
-  }, [videoId, setLoading, setVideos, setPage, setHasMore]);
+  }, [videoId, activeCategory, setLoading, setVideos, setPage, setHasMore]);
 
   useEffect(() => {
     fetchVideo();

@@ -1,7 +1,9 @@
+import uuid as _uuid
 from typing import List, Tuple, get_args
 from uuid import NAMESPACE_DNS, UUID, uuid5
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -12,6 +14,7 @@ from src.errors.videos import (
     VideoPrivacyUpdateForbidden,
 )
 from src.models import Category, Channel, PrivacyStatus, Video, VideoReaction, VideoView
+from src.models.watch_history import WatchHistory
 from src.schemas.video import VideoCategory, map_video_to_playback, to_video_preview
 from src.services.reactions import toggle_reaction
 
@@ -34,9 +37,15 @@ class VideoService:
         resolutions = [f"{r.height}p" for r in video.resolutions]
         return map_video_to_playback(video, resolutions)
 
-    async def list_videos(self, page: int, size: int, category: str | None = None):
+    async def list_videos(
+        self,
+        page: int,
+        size: int,
+        category: str | None = None,
+        channel_name: str | None = None,
+    ):
         """
-        Retrieves public, ready videos. Optionally filters by category.
+        Retrieves public, ready videos. Optionally filters by category and/or channel name.
         """
         filters = [
             Video.privacy_id == uuid5(NAMESPACE_DNS, "privacy_status:public"),
@@ -46,6 +55,16 @@ class VideoService:
         if category:
             category_id = uuid5(NAMESPACE_DNS, f"video_category:{category.lower()}")
             filters.append(Video.category_id == category_id)
+
+        if channel_name:
+            channel = await self.session.scalar(
+                select(Channel).where(Channel.name == channel_name)
+            )
+            if channel:
+                filters.append(Video.channel_id == channel.id)
+            else:
+                # Channel not found — return empty result
+                return [], 0
 
         preload = [
             selectinload(Video.channel),
@@ -155,3 +174,19 @@ class VideoService:
                 .values(views_count=Video.views_count + 1)
             )
             await self.session.commit()
+
+        # Upsert watch history (create or refresh timestamp on re-watch)
+        await self.session.execute(
+            pg_insert(WatchHistory)
+            .values(
+                id=_uuid.uuid4(),
+                user_id=user_id,
+                video_id=video_id,
+                last_watched_at=func.now(),
+            )
+            .on_conflict_do_update(
+                index_elements=["user_id", "video_id"],
+                set_={"last_watched_at": func.now()},
+            )
+        )
+        await self.session.commit()

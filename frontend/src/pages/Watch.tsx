@@ -43,7 +43,7 @@ export default function Watch() {
         setOpen(false);
     }, [setOpen]);
 
-    const { video, videos, error, loading, hasMore, loadMore, metaDataText, setVideo } = useVideo();
+    const { video, videos, error, loading, hasMore, loadMore, metaDataText, setVideo } = useVideo(active);
 
     const [comments, setComments] = useState<VideoComment[]>([]);
     const [commentText, setCommentText] = useState("");
@@ -197,13 +197,16 @@ export default function Watch() {
                 {/* Channel row + actions */}
                 <div className="flex flex-wrap items-center justify-between gap-3 mt-3">
                     {/* Channel */}
-                    <div className="flex items-center gap-3">
+                    <Link
+                        to={`/channel/${encodeURIComponent(video.channel)}`}
+                        className="flex items-center gap-3 hover:opacity-80 transition-opacity"
+                    >
                         <Avatar src={video.channel_avatar} name={video.channel} size={40} />
                         <div>
-                            <p className="font-semibold text-sm leading-tight">{video.channel}</p>
+                            <p className="font-semibold text-sm leading-tight hover:underline">{video.channel}</p>
                             <p className="text-xs text-muted-foreground">{metaDataText}</p>
                         </div>
-                    </div>
+                    </Link>
 
                     {/* Reactions + Download */}
                     <div className="flex items-center gap-2 flex-wrap">

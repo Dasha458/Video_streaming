@@ -141,12 +141,20 @@ function OverviewTab({ period }: { period: Period }) {
                 <CardContent>
                     {loading ? <ChartSkeleton /> : data?.views_per_day.length ? (
                         <ResponsiveContainer width="100%" height={220}>
-                            <LineChart data={data.views_per_day}>
+                            <LineChart data={data.views_per_day} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                                 <XAxis dataKey="date" tick={{ fontSize: 11 }} />
                                 <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                                <Tooltip />
-                                <Line type="monotone" dataKey="count" name="Views" stroke="hsl(var(--primary))" dot={false} strokeWidth={2} />
+                                <Tooltip formatter={(v) => [v, "Views"]} />
+                                <Line
+                                    type="monotone"
+                                    dataKey="count"
+                                    name="Views"
+                                    stroke="hsl(var(--primary))"
+                                    strokeWidth={2}
+                                    dot={{ r: 3, fill: "hsl(var(--primary))", strokeWidth: 0 }}
+                                    activeDot={{ r: 5, fill: "hsl(var(--primary))" }}
+                                />
                             </LineChart>
                         </ResponsiveContainer>
                     ) : <p className="text-sm text-muted-foreground text-center py-12">No view data yet</p>}

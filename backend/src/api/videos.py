@@ -46,9 +46,14 @@ router_videos = APIRouter(
 )
 async def get_videos(
     payload: Annotated[PaginationQuery, Depends()],
+    channel_name: str | None = Query(
+        default=None, description="Filter videos by channel name"
+    ),
     service: VideoService = Depends(get_video_service),
 ) -> VideoPreviewPage:
-    videos, total = await service.list_videos(page=payload.page, size=payload.size)
+    videos, total = await service.list_videos(
+        page=payload.page, size=payload.size, channel_name=channel_name
+    )
     return VideoPreviewPage(
         items=videos, page=payload.page, size=payload.size, total=total
     )

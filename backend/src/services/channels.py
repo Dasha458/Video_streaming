@@ -63,7 +63,15 @@ class ChannelService:
             raise ChannelNotFoundError()
         is_owner = user_id is not None and channel.user_id == user_id
         videos_count = await self._count_videos(channel.id)
-        return self._to_response(channel, is_owner=is_owner, videos_count=videos_count)
+        is_subscribed = False
+        if user_id is not None and not is_owner:
+            is_subscribed = await self.session.scalar(
+                select(Subscription).where(
+                    Subscription.subscriber_id == user_id,
+                    Subscription.channel_id == channel.id,
+                )
+            ) is not None
+        return self._to_response(channel, is_owner=is_owner, videos_count=videos_count, is_subscribed=is_subscribed)
 
     async def update_channel(self, user_id: UUID, data: ChannelUpdate) -> ChannelResponse:
         channel = await self.session.scalar(
@@ -168,7 +176,7 @@ class ChannelService:
         return result or 0
 
     @staticmethod
-    def _to_response(channel: Channel, is_owner: bool = False, videos_count: int = 0) -> ChannelResponse:
+    def _to_response(channel: Channel, is_owner: bool = False, videos_count: int = 0, is_subscribed: bool = False) -> ChannelResponse:
         return ChannelResponse(
             id=channel.id,
             name=channel.name,
@@ -186,4 +194,5 @@ class ChannelService:
             bio=channel.description,
             createdAt=channel.created_at.isoformat(),
             isOwner=is_owner,
+            isSubscribed=is_subscribed,
         )

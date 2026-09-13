@@ -32,6 +32,7 @@ class ChannelResponse(BaseModel):
     bio: Optional[str] = None
     createdAt: str = ""
     isOwner: bool = False
+    isSubscribed: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
