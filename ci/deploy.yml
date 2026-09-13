@@ -14,8 +14,12 @@ detect-changes:
     - apk add --no-cache git
     - echo "Checking changed folders..."
     - |
-      for SERVICE in backend services/convertor services/moderation frontend; do
-        if git diff --name-only $CI_COMMIT_BEFORE_SHA $CI_COMMIT_SHA | grep -q "^$SERVICE/"; then
+      # SERVICE:path pairs. SERVICE must match the `deploy` job's matrix
+      # names below; path is the repo prefix that job actually builds from.
+      for PAIR in backend:backend convertor:services/convertor moderation:services/moderation frontend:frontend; do
+        SERVICE="${PAIR%%:*}"
+        PATH_PREFIX="${PAIR#*:}"
+        if git diff --name-only $CI_COMMIT_BEFORE_SHA $CI_COMMIT_SHA | grep -q "^$PATH_PREFIX/"; then
           echo "$SERVICE changed"
           echo "$SERVICE=true" >> changes.env
         else
