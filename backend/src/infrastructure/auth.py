@@ -32,6 +32,17 @@ async def get_user_db(
 
 
 class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
+    """
+    KNOWN GAP (tracked, not a bug to "fix" here): on_after_forgot_password and
+    on_after_request_verify never send an email. fastapi-users still issues a
+    valid reset/verification token and the /forgot-password and /request-verify
+    endpoints respond 202 as if the email went out, but the user never
+    receives it -- password reset and email verification are non-functional
+    end-to-end until a real email provider (SMTP/SendGrid/SES/etc.) is wired
+    in here. That's a product/infra decision (which provider, credentials,
+    templates), not a cleanup task -- deliberately left as-is.
+    """
+
     reset_password_token_secret = jwt_settings.JWT_SECRET
     verification_token_secret = jwt_settings.JWT_SECRET
 
@@ -43,12 +54,13 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
     async def on_after_forgot_password(
         self, user: User, token: str, request: Optional[Request] = None
     ) -> None:
-        # In production, send an email with the reset token
+        # See the class docstring: email delivery is not implemented yet.
         pass
 
     async def on_after_request_verify(
         self, user: User, token: str, request: Optional[Request] = None
     ) -> None:
+        # See the class docstring: email delivery is not implemented yet.
         pass
 
 
