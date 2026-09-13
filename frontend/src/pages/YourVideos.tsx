@@ -182,7 +182,7 @@ export default function YourVideos() {
             ) : (
                 <div className="divide-y divide-border">
                     {filtered.map((v) => {
-                        const statusKey = (v as any).status ?? "Ready";
+                        const statusKey = v.status ?? "Ready";
                         const status = STATUS_LABEL[statusKey] ?? { label: statusKey, color: "text-muted-foreground" };
                         return (
                             <div key={v.id} className="flex gap-4 py-3 group">
@@ -190,7 +190,7 @@ export default function YourVideos() {
                                 <Link to={`/watch?v=${v.id}`} className="shrink-0">
                                     <div className="relative rounded-xl overflow-hidden bg-muted" style={{ width: 160, height: 90 }}>
                                         <img
-                                            src={v.thumbnail_url || (v as any).previewUrl || ""}
+                                            src={v.thumbnail_url || v.previewUrl || ""}
                                             alt={v.title}
                                             className="w-full h-full object-cover"
                                             loading="lazy"
@@ -223,7 +223,7 @@ export default function YourVideos() {
                                     </div>
                                     <div className="flex items-center gap-1.5 w-20">
                                         <MessageSquare className="h-4 w-4" />
-                                        <span>{((v as any).commentCount ?? 0).toLocaleString()}</span>
+                                        <span>{(v.commentCount ?? 0).toLocaleString()}</span>
                                     </div>
                                 </div>
 

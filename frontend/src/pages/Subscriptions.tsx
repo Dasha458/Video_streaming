@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import ChannelCard from "@/components/ChannelCard";
 import { getMySubscriptions, unsubscribeFromChannel } from "@/lib/api/channelApi";
-import type { ChannelInfo } from "@/lib/api/types";
+import type { ChannelSubscriptionItem } from "@/lib/api/types";
 import { toast } from "@/components/ui/toast/use-toast";
 
 export default function Subscriptions() {
-    const [channels, setChannels] = useState<ChannelInfo[]>([]);
+    const [channels, setChannels] = useState<ChannelSubscriptionItem[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [unsubscribingId, setUnsubscribingId] = useState<string | null>(null);
@@ -67,7 +67,7 @@ export default function Subscriptions() {
                     {channels.map((channel) => (
                         <ChannelCard
                             key={channel.channel_name}
-                            channel_avatar={channel.channel_avatar}
+                            channel_avatar={channel.channel_avatar ?? undefined}
                             channel_name={channel.channel_name}
                             handle={`@${channel.channel_name}`}
                             subscribers={`${channel.subscribersCount} subscribers`}

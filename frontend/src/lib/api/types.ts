@@ -1,14 +1,39 @@
+/** Mirrors backend src/schemas/channel.py's ChannelResponse exactly --
+ * that schema itself carries both a snake_case DB-shaped field set
+ * (avatar_path, subscribers_count, created_at, ...) and a second
+ * camelCase set (channel_avatar, subscribersCount, createdAt, ...) for
+ * frontend convenience. Both are real and present on every response;
+ * this is not duplication introduced here. */
 export interface ChannelInfo {
+  id: string;
+  name: string;
+  description?: string | null;
+  subscribers_count: number;
+  views_count: number;
+  avatar_path?: string | null;
+  background_path?: string | null;
+  created_at: string;
+  isOwner: boolean;
+  isSubscribed: boolean;
   channel_name: string;
   channel_avatar: string;
   channelBanner?: string;
   subscribersCount: number;
   videosCount: number;
   bio?: string;
-  description?: string;
   createdAt: string;
-  name: string;
-  isOwner?: boolean;
+}
+
+/** Backend src/schemas/channel.py's ChannelSubscriptionItem -- the actual
+ * (smaller) shape GET /api/channels/subscriptions returns. Previously
+ * mistyped as ChannelInfo[], which claims several required fields
+ * (id, isOwner, avatar_path, ...) this endpoint never sends. */
+export interface ChannelSubscriptionItem {
+  channel_name: string;
+  channel_avatar?: string | null;
+  subscribersCount: number;
+  videosCount: number;
+  createdAt: string;
 }
 
 export interface VideoPreview {
@@ -27,20 +52,21 @@ export interface VideoPreview {
   dislikesCount: number;
   privacy: string;
   status?: string;
+  // Not returned by any video-listing endpoint today (GET /api/videos/,
+  // /api/videos/categories/{category}) -- always undefined in practice.
+  // A real per-video comment count would need a backend change; kept
+  // optional here so call sites read it honestly instead of casting.
+  commentCount?: number;
 }
 
 export interface Video {
-  publishedAt: string;
   id: string;
   title: string;
-  size: number;
-  hash: string;
   name: string;
   avatar_url?: string;
   master_hls_url: string;
   thumbnail_url: string;
   created_at: string;
-  channelId: string;
   views_count: number;
   likes_count: number;
   dislikes_count: number;
@@ -54,6 +80,10 @@ export interface Video {
   preview_url?: string;
   description?: string;
   timeAgo?: string;
+  // publishedAt/size/hash/channelId removed: GET /api/videos/{id} (VideoPlayback,
+  // see videoApi.ts's RawVideoPlayback) never returns these, and nothing in the
+  // frontend reads them off a Video value -- they were required here but always
+  // absent in practice.
 }
 
 export interface VideoComment {
@@ -61,7 +91,10 @@ export interface VideoComment {
   userId: string;
   content: string;
   createdAt: string;
-  videoId: string;
+  // Not present on backend src/schemas/comments.py's CommentRead -- comments
+  // are only ever fetched already scoped to a video, so it's never echoed
+  // back. Kept optional (never actually set) rather than removed outright.
+  videoId?: string;
   parentId?: string;
   likesCount: number;
   dislikesCount: number;
@@ -70,20 +103,6 @@ export interface VideoComment {
   replies?: VideoComment[];
 }
 
-export interface Comment {
-  id: string;
-  userId: string;
-  videoId: string;
-  content: string;
-  createdAt: string;
-  updatedAt?: string;
-  likesCount: number;
-  dislikesCount: number;
-  user_name?: string;
-  user_avatar?: string;
-  parent_id?: string;
-  replies?: Comment[];
-}
 export interface UserInfo {
   id: string;
   username: string;
@@ -99,13 +118,6 @@ export interface ChannelPreview {
   channel_avatar: string;
   subscribersCount: number;
   videosCount: number;
-}
-
-export interface CommentPage {
-  items: Comment[];
-  page: number;
-  size: number;
-  total: number;
 }
 
 export interface Playlist {
@@ -200,9 +212,9 @@ export type VideoPreviewWithTime = VideoPreview & {
 
 export interface SearchFilters {
   category?: string;
-  minViews?: number; // �������� ������������
-  maxViews?: number; // �������� ������������
-  includeDescription: boolean; // �������� ����'�������
+  minViews?: number; // Minimum view count
+  maxViews?: number; // Maximum view count
+  includeDescription: boolean; // Also match the video description, not just the title
   smartSearch: boolean;
 }
 
@@ -211,29 +223,29 @@ export interface SearchResponse {
 }
 type SetVideoState = React.Dispatch<React.SetStateAction<VideoDetail | null>>;
 export interface UseVideoResult {
-  // --- ������ ����� ---
+  // --- Data ---
   video: VideoDetail | null;
   videos: VideoPreviewWithTime[];
   comments: VideoComment[];
   error: string | null;
   loading: boolean;
   hasMore: boolean;
-  page: number; // ������� ������� ��� ��������
+  page: number; // Current page for pagination
   setVideo: SetVideoState;
-  // --- ������� ����������� �� ����� ---
+  // --- Actions consumers call ---
   loadMore: () => Promise<void>;
   loadMoreSearchResults: () => Promise<void>;
   formatViews: (views: number | undefined) => string;
   metaDataText: string;
 
-  // --- ������� ��� ���������� ����� ---
+  // --- Raw setters for advanced consumers ---
   setVideos: React.Dispatch<React.SetStateAction<VideoPreviewWithTime[]>>;
   setPage: React.Dispatch<React.SetStateAction<number>>;
   setLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setHasMore: React.Dispatch<React.SetStateAction<boolean>>;
 
-  // --- ���� �� ������� ��� ������ ---
-  searchQuery: string; // �������� ��������� �����
+  // --- Search state ---
+  searchQuery: string; // Current search query text
   setSearchQuery: React.Dispatch<React.SetStateAction<string>>;
   setSearchFilters: React.Dispatch<
     React.SetStateAction<SearchFilters | undefined>

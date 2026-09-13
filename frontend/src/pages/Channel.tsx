@@ -53,7 +53,7 @@ export default function Channel() {
             .getChannelInfo(channel_name)
             .then((info) => {
                 setChannel(info);
-                setSubscribed(!!(info as any).isSubscribed);
+                setSubscribed(!!info.isSubscribed);
             })
             .catch(console.error)
             .finally(() => setChannelLoading(false));
@@ -135,13 +135,13 @@ export default function Channel() {
         );
     }
 
-    const isOwner = !!(channel as any).isOwner;
-    const avatarSrc = channel.channel_avatar || (channel as any).avatar_path || null;
-    const bannerSrc = channel.channelBanner || (channel as any).background_path || null;
-    const bio = channel.bio || (channel as any).description || null;
-    const subCount = channel.subscribersCount ?? (channel as any).subscribers_count ?? 0;
+    const isOwner = channel.isOwner;
+    const avatarSrc = channel.channel_avatar || channel.avatar_path || null;
+    const bannerSrc = channel.channelBanner || channel.background_path || null;
+    const bio = channel.bio || channel.description || null;
+    const subCount = channel.subscribersCount ?? channel.subscribers_count ?? 0;
     const videoCount = channel.videosCount ?? 0;
-    const joinedAt = channel.createdAt || (channel as any).created_at || null;
+    const joinedAt = channel.createdAt || channel.created_at || null;
 
     const TABS: { id: Tab; label: string }[] = [
         { id: "videos", label: videoCount > 0 ? `Videos (${videoCount})` : "Videos" },
@@ -261,7 +261,7 @@ export default function Channel() {
                                         <Link key={v.id} to={`/watch?v=${v.id}`}>
                                             <VideoCard
                                                 id={v.id}
-                                                title={v.title || (v as any).name || "Untitled"}
+                                                title={v.title || v.name || "Untitled"}
                                                 thumbnail={v.previewUrl || v.thumbnail_url}
                                                 channel_name={channel.name}
                                                 channel_avatar={avatarSrc ?? undefined}
