@@ -20,6 +20,7 @@ import type { VideoDetail, VideoComment, VideoPreviewWithTime } from "@api/types
 import { timeAgo } from "@/utils/timeAgo";
 import { formatCount } from "@/utils/formatters";
 import { Avatar } from "@/components/common/Avatar";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 export default function Watch() {
     const [searchParams] = useSearchParams();
@@ -45,10 +46,8 @@ export default function Watch() {
     const [showDesc, setShowDesc] = useState(false);
     const [resolution, setResolution] = useState("720p");
     const [watchLaterDone, setWatchLaterDone] = useState(false);
-    const [playlistDropOpen, setPlaylistDropOpen] = useState(false);
     const [playlists, setPlaylists] = useState<PlaylistItem[]>([]);
     const [addedToPlaylists, setAddedToPlaylists] = useState<Set<string>>(new Set());
-    const playlistDropRef = useRef<HTMLDivElement>(null);
 
     // Watch-session heartbeat for creator analytics (watch time / retention).
     const videoElementRef = useRef<HTMLVideoElement>(null);
@@ -123,9 +122,8 @@ export default function Watch() {
         } catch { /* already added or error — ignore */ }
     };
 
-    const openPlaylistDrop = async () => {
-        setPlaylistDropOpen((v) => !v);
-        if (playlists.length === 0 && user) {
+    const openPlaylistDrop = async (open: boolean) => {
+        if (open && playlists.length === 0 && user) {
             try {
                 const data = await getPlaylists();
                 setPlaylists(data.items);
@@ -140,17 +138,6 @@ export default function Watch() {
             setAddedToPlaylists((prev) => new Set(prev).add(playlistId));
         } catch { /* ignore */ }
     };
-
-    // Close playlist dropdown on outside click
-    useEffect(() => {
-        const handler = (e: MouseEvent) => {
-            if (playlistDropRef.current && !playlistDropRef.current.contains(e.target as Node)) {
-                setPlaylistDropOpen(false);
-            }
-        };
-        document.addEventListener("mousedown", handler);
-        return () => document.removeEventListener("mousedown", handler);
-    }, []);
 
     const { handleDownload } = useDownload({ video: video as unknown as VideoDetail, resolution });
     const { handleReaction } = useReactions({
@@ -242,33 +229,33 @@ export default function Watch() {
 
                         {/* Save to Playlist */}
                         {user && (
-                            <div className="relative" ref={playlistDropRef}>
-                                <button
-                                    className="flex items-center gap-1.5 rounded-full bg-muted px-4 py-2 text-sm font-medium hover:bg-muted/70 transition-colors"
-                                    onClick={openPlaylistDrop}
-                                >
-                                    <ListPlus className="h-4 w-4" />
-                                    Save
-                                </button>
-                                {playlistDropOpen && (
-                                    <div className="absolute top-full mt-1 right-0 z-50 min-w-[180px] rounded-lg border bg-background shadow-md py-1">
-                                        {playlists.length === 0 ? (
-                                            <p className="px-4 py-2 text-sm text-muted-foreground">No playlists yet</p>
-                                        ) : (
-                                            playlists.map((pl) => (
-                                                <button
-                                                    key={pl.id}
-                                                    className="flex items-center justify-between w-full px-4 py-2 text-sm hover:bg-muted transition-colors"
-                                                    onClick={() => handleAddToPlaylist(pl.id)}
-                                                >
-                                                    <span className="truncate">{pl.name}</span>
-                                                    {addedToPlaylists.has(pl.id) && <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0 ml-2" />}
-                                                </button>
-                                            ))
-                                        )}
-                                    </div>
-                                )}
-                            </div>
+                            <DropdownMenu onOpenChange={openPlaylistDrop}>
+                                <DropdownMenuTrigger asChild>
+                                    <button className="flex items-center gap-1.5 rounded-full bg-muted px-4 py-2 text-sm font-medium hover:bg-muted/70 transition-colors">
+                                        <ListPlus className="h-4 w-4" />
+                                        Save
+                                    </button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="min-w-[180px]">
+                                    {playlists.length === 0 ? (
+                                        <p className="px-2 py-1.5 text-sm text-muted-foreground">No playlists yet</p>
+                                    ) : (
+                                        playlists.map((pl) => (
+                                            <DropdownMenuItem
+                                                key={pl.id}
+                                                className="justify-between"
+                                                onSelect={(e) => {
+                                                    e.preventDefault();
+                                                    handleAddToPlaylist(pl.id);
+                                                }}
+                                            >
+                                                <span className="truncate">{pl.name}</span>
+                                                {addedToPlaylists.has(pl.id) && <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0 ml-2" />}
+                                            </DropdownMenuItem>
+                                        ))
+                                    )}
+                                </DropdownMenuContent>
+                            </DropdownMenu>
                         )}
 
                         {/* Download */}
