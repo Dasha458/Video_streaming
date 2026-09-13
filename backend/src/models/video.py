@@ -18,17 +18,17 @@ from src.core.status_ids import STATUS_PROCESSING_ID
 from src.infrastructure.database import Base
 
 if TYPE_CHECKING:
-    from category import Category
-    from channel import Channel
-    from comments import Comment
-    from playlist import Playlist
-    from privacy_status import PrivacyStatus
-    from video_reactions import VideoReaction
-    from video_resolutions import VideoResolution
-    from video_status import VideoStatus
-    from video_views import VideoView
-    from watch_history import WatchHistory
-    from watch_later import WatchLater
+    from .category import Category
+    from .channel import Channel
+    from .comments import Comment
+    from .playlist import Playlist
+    from .privacy_status import PrivacyStatus
+    from .video_reactions import VideoReaction
+    from .video_resolutions import VideoResolution
+    from .video_status import VideoStatus
+    from .video_views import VideoView
+    from .watch_history import WatchHistory
+    from .watch_later import WatchLater
 
 
 class Video(Base):

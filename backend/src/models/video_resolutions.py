@@ -8,7 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.infrastructure.database import Base
 
 if TYPE_CHECKING:
-    from video import Video
+    from .video import Video
 
 
 class VideoResolution(Base):
