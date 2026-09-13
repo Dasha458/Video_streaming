@@ -7,14 +7,22 @@ import pytest
 from tests.conftest import TEST_USER_ID
 
 
+def _delta(value: int, previous: int = 0):
+    from src.schemas.analytics import DeltaInt
+
+    return DeltaInt(value=value, previous=previous, delta_percent=0.0)
+
+
 def _make_overview():
     from src.schemas.analytics import OverviewResponse
 
     return OverviewResponse(
-        total_views=1000,
+        period="28d",
+        total_views=_delta(1000),
         total_subscribers=50,
-        total_likes=200,
-        total_comments=30,
+        total_likes=_delta(200),
+        total_comments=_delta(30),
+        total_watch_time_seconds=_delta(0),
         views_per_day=[{"date": "2025-01-01", "count": 100}],
         top_videos=[],
     )
@@ -23,13 +31,14 @@ def _make_overview():
 def _make_content():
     from src.schemas.analytics import ContentResponse
 
-    return ContentResponse(videos=[])
+    return ContentResponse(period="28d", videos=[])
 
 
 def _make_audience():
     from src.schemas.analytics import AudienceResponse
 
     return AudienceResponse(
+        period="28d",
         subscribers_per_day=[],
         unique_viewers=100,
         returning_viewers=40,
@@ -64,7 +73,7 @@ class TestAnalyticsOverviewEndpoint:
             assert "total_likes" in body
             assert "total_comments" in body
             assert "views_per_day" in body
-            assert body["total_views"] == 1000
+            assert body["total_views"]["value"] == 1000
             assert body["total_subscribers"] == 50
         finally:
             app.dependency_overrides.pop(get_service_and_channel, None)

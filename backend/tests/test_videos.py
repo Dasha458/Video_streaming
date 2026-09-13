@@ -20,6 +20,10 @@ def _make_preview(vid_id=FAKE_VIDEO_ID, title="Test Video"):
         channel_avatar="/av.jpg",
         channel_name="TestChannel",
         views_count=42,
+        likes_count=5,
+        dislikes_count=1,
+        privacy="public",
+        status="Ready",
         created_at=datetime(2025, 1, 1, tzinfo=timezone.utc),
     )
 
