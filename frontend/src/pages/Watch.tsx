@@ -19,16 +19,7 @@ import { getComments, addComment, deleteComment, addReply, reactToComment, mapCo
 import type { VideoDetail, VideoComment, VideoPreviewWithTime } from "@api/types";
 import { timeAgo } from "@/utils/timeAgo";
 import { formatCount } from "@/utils/formatters";
-
-function Avatar({ src, name, size }: { src?: string; name?: string; size: number }) {
-    const initial = (name ?? "?").charAt(0).toUpperCase();
-    if (src) return <img src={src} alt={name} width={size} height={size} className="rounded-full object-cover shrink-0" style={{ width: size, height: size }} />;
-    return (
-        <div className="rounded-full bg-muted flex items-center justify-center shrink-0 text-sm font-semibold text-muted-foreground" style={{ width: size, height: size }}>
-            {initial}
-        </div>
-    );
-}
+import { Avatar } from "@/components/common/Avatar";
 
 export default function Watch() {
     const [searchParams] = useSearchParams();

@@ -10,38 +10,9 @@ import channelApi from "@api/channelApi";
 import videoApi from "@api/videoApi";
 import { useAuth } from "@/contexts/AuthContext";
 import { timeAgo } from "@/utils/timeAgo";
+import { Avatar } from "@/components/common/Avatar";
 
 type Tab = "videos" | "about";
-
-// ── Avatar with gradient fallback ──────────────────────────────────────────
-function ChannelAvatar({ src, name, size }: { src?: string | null; name?: string; size: number }) {
-    const initial = (name ?? "?").charAt(0).toUpperCase();
-    if (src) {
-        return (
-            <img
-                src={src}
-                alt={name}
-                width={size}
-                height={size}
-                className="rounded-full object-cover border-4 border-background"
-                style={{ width: size, height: size }}
-            />
-        );
-    }
-    return (
-        <div
-            className="rounded-full border-4 border-background flex items-center justify-center font-bold text-white shrink-0"
-            style={{
-                width: size,
-                height: size,
-                fontSize: size * 0.38,
-                background: "linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary)/0.6))",
-            }}
-        >
-            {initial}
-        </div>
-    );
-}
 
 function formatSubs(n?: number) {
     if (!n) return "0 subscribers";
@@ -190,7 +161,7 @@ export default function Channel() {
                 {/* Channel header */}
                 <div className="flex flex-col sm:flex-row items-start sm:items-end gap-4 py-4 border-b border-border">
                     <div className="-mt-12 sm:-mt-14 shrink-0">
-                        <ChannelAvatar src={avatarSrc} name={channel.name} size={96} />
+                        <Avatar src={avatarSrc} name={channel.name} size={96} variant="gradient" bordered />
                     </div>
 
                     <div className="flex flex-1 flex-col sm:flex-row sm:items-center sm:justify-between gap-3 min-w-0">
