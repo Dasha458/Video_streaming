@@ -45,8 +45,8 @@ class CheckUserRequest(BaseModel):
 
 
 class CheckUserResponse(BaseModel):
-    usernameExists: bool
-    emailExists: bool
+    username_exists: bool
+    email_exists: bool
 
 
 class ForgotPasswordRequest(BaseModel):

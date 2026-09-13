@@ -44,9 +44,11 @@ export const checkUserExists = async (
   username: string,
   email: string,
 ): Promise<{ usernameExists: boolean; emailExists: boolean }> => {
-  return clientApi
-    .post("/api/auth/check-user", { username, email })
-    .then((res) => res.data);
+  const { data } = await clientApi.post<{ username_exists: boolean; email_exists: boolean }>(
+    "/api/auth/check-user",
+    { username, email },
+  );
+  return { usernameExists: data.username_exists, emailExists: data.email_exists };
 };
 
 export const sendPasswordReset = async (email: string): Promise<void> => {

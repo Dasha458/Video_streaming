@@ -183,8 +183,8 @@ class TestCheckUserEndpoint:
             )
             assert response.status_code == 200
             body = response.json()
-            assert body["usernameExists"] is False
-            assert body["emailExists"] is False
+            assert body["username_exists"] is False
+            assert body["email_exists"] is False
         finally:
             if original is not None:
                 app.dependency_overrides[get_async_session] = original
@@ -209,8 +209,8 @@ class TestCheckUserEndpoint:
             )
             assert response.status_code == 200
             body = response.json()
-            assert body["usernameExists"] is True
-            assert body["emailExists"] is False
+            assert body["username_exists"] is True
+            assert body["email_exists"] is False
         finally:
             if original is not None:
                 app.dependency_overrides[get_async_session] = original
@@ -235,8 +235,8 @@ class TestCheckUserEndpoint:
             )
             assert response.status_code == 200
             body = response.json()
-            assert body["usernameExists"] is False
-            assert body["emailExists"] is True
+            assert body["username_exists"] is False
+            assert body["email_exists"] is True
         finally:
             if original is not None:
                 app.dependency_overrides[get_async_session] = original
