@@ -4,23 +4,28 @@ import InfiniteScroll from "@/components/infinite-scroll";
 import { Button } from "@/components/ui/button";
 import { Clock } from "lucide-react";
 import { getWatchLater, clearWatchLater, removeFromWatchLater } from "@api/watchLaterApi";
-import { usePagedList } from "@/hooks/usePagedList";
+import { usePagedListQuery } from "@/hooks/queries/usePagedListQuery";
 
 export default function WatchLater() {
-    const { items: videos, setItems, loading, hasMore, setHasMore, loadMore } = usePagedList(getWatchLater);
+    const {
+        items: videos,
+        isLoading: loading,
+        hasMore,
+        loadMore,
+        refresh,
+    } = usePagedListQuery("watch-later", getWatchLater);
 
     const handleRemove = async (videoId: string) => {
         try {
             await removeFromWatchLater(videoId);
-            setItems((prev) => prev.filter((v) => v.id !== videoId));
+            await refresh();
         } catch { /* ignore */ }
     };
 
     const handleClear = async () => {
         try {
             await clearWatchLater();
-            setItems([]);
-            setHasMore(false);
+            await refresh();
         } catch { /* ignore */ }
     };
 
@@ -45,7 +50,7 @@ export default function WatchLater() {
                 </div>
             ) : (
                 <div className="grid gap-x-4 gap-y-8 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 pb-10">
-                    <InfiniteScroll loadMore={loadMore} hasMore={hasMore}>
+                    <InfiniteScroll loadMore={loadMore} hasMore={Boolean(hasMore)}>
                         {videos.map((video) => (
                             <div key={video.id} className="relative w-full">
                                 <Link to={`/watch?v=${video.id}`} className="w-full block">
