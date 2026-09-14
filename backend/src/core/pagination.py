@@ -16,21 +16,36 @@ async def paginate_query(
     order_by: Any = None,
     preload: Optional[List[Any]] = None,
     mapper: Optional[Callable[[T], U]] = None,
+    joins: Optional[List[Tuple[Any, Any]]] = None,
+    count_from: Optional[Any] = None,
 ) -> Tuple[List[U], int]:
     """
     Generic pagination for SQLAlchemy async queries.
+
+    ``joins`` lets the paginated rows come from ``model`` joined through an
+    association table -- e.g. selecting ``Video`` rows via a
+    ``VideoReaction`` link -- as a list of ``(target, onclause)`` pairs
+    passed to ``.join()``. ``count_from`` overrides what the total count is
+    computed over when it differs from ``model`` itself (e.g. counting
+    ``VideoReaction`` rows while selecting the ``Video`` rows they point to).
 
     Returns: (items, total)
     """
     filters = filters or []
     preload = preload or []
+    joins = joins or []
 
     total = (
-        await session.scalar(select(func.count()).select_from(model).where(*filters))
+        await session.scalar(
+            select(func.count()).select_from(count_from or model).where(*filters)
+        )
         or 0
     )
 
-    stmt = select(model).where(*filters)
+    stmt = select(model)
+    for target, onclause in joins:
+        stmt = stmt.join(target, onclause)
+    stmt = stmt.where(*filters)
     for opt in preload:
         stmt = stmt.options(opt)
     if order_by is not None:

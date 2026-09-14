@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from src.api.dependencies.services import get_liked_service
 from src.schemas.endpoint import PaginationQuery
 from src.schemas.video import VideoPreviewPage
-from src.services.auth import get_current_user_id
+from src.services.dependencies import get_current_user_id
 from src.services.liked import LikedService
 
 router_liked = APIRouter(

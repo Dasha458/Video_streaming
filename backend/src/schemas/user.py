@@ -17,10 +17,6 @@ class UserCreate(schemas.BaseUserCreate):
     username: str
 
 
-class UserUpdate(schemas.BaseUserUpdate):
-    username: Optional[str] = None
-
-
 class UserPublic(BaseModel):
     id: UUID
     username: str
@@ -45,17 +41,8 @@ class CheckUserRequest(BaseModel):
 
 
 class CheckUserResponse(BaseModel):
-    usernameExists: bool
-    emailExists: bool
-
-
-class ForgotPasswordRequest(BaseModel):
-    email: str
-
-
-class ResetPasswordRequest(BaseModel):
-    token: str
-    password: str
+    username_exists: bool
+    email_exists: bool
 
 
 class UserUpdateRequest(BaseModel):

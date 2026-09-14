@@ -196,3 +196,106 @@ class TestVideoSearchEndpoint:
             assert len(response.json()["results"]) == 5
         finally:
             app.dependency_overrides.pop(get_search_service, None)
+
+
+class TestVideoSearchPagination:
+    """POST /api/search/video — offset/limit paging."""
+
+    def _make_hit(self, title="Test Video"):
+        return {
+            "id": str(uuid.uuid4()),
+            "name": title,
+            "description": "A test video description",
+            "category": "education",
+            "views": 100,
+        }
+
+    def test_offset_is_passed_through_to_the_service(self, client, app):
+        from src.api.dependencies.services import get_search_service
+
+        svc = AsyncMock()
+        svc.search_video = AsyncMock(return_value={"hits": [], "total": 42})
+        app.dependency_overrides[get_search_service] = lambda: svc
+        try:
+            response = client.post(
+                "/api/search/video",
+                json={"query": "video", "limit": 9, "offset": 18},
+            )
+            assert response.status_code == 200
+            # offset is the last positional argument of search_video
+            assert svc.search_video.await_args.args[-1] == 18
+        finally:
+            app.dependency_overrides.pop(get_search_service, None)
+
+    def test_response_echoes_paging_and_total(self, client, app):
+        from src.api.dependencies.services import get_search_service
+
+        svc = AsyncMock()
+        svc.search_video = AsyncMock(
+            return_value={"hits": [self._make_hit()], "total": 42}
+        )
+        app.dependency_overrides[get_search_service] = lambda: svc
+        try:
+            response = client.post(
+                "/api/search/video",
+                json={"query": "video", "limit": 9, "offset": 18},
+            )
+            body = response.json()
+            assert body["total"] == 42
+            assert body["offset"] == 18
+            assert body["limit"] == 9
+        finally:
+            app.dependency_overrides.pop(get_search_service, None)
+
+    def test_offset_defaults_to_zero(self, client, app):
+        from src.api.dependencies.services import get_search_service
+
+        svc = AsyncMock()
+        svc.search_video = AsyncMock(return_value={"hits": [], "total": 0})
+        app.dependency_overrides[get_search_service] = lambda: svc
+        try:
+            response = client.post("/api/search/video", json={"query": "video"})
+            assert response.status_code == 200
+            assert response.json()["offset"] == 0
+            assert svc.search_video.await_args.args[-1] == 0
+        finally:
+            app.dependency_overrides.pop(get_search_service, None)
+
+    def test_negative_offset_is_rejected(self, client):
+        response = client.post(
+            "/api/search/video",
+            json={"query": "video", "offset": -1},
+        )
+        assert response.status_code == 400  # app maps ValidationError → 400
+
+
+class TestSearchServicePaging:
+    """SearchService.search_video passes paging down to Elasticsearch."""
+
+    @pytest.mark.asyncio
+    async def test_text_search_uses_from_and_size(self):
+        from src.services.search import SearchService
+
+        es = AsyncMock()
+        es.search = AsyncMock(
+            return_value={"hits": {"hits": [], "total": {"value": 7}}}
+        )
+        service = SearchService(es)
+
+        result = await service.search_video("cats", limit=9, offset=18)
+
+        assert es.search.await_args.kwargs["size"] == 9
+        assert es.search.await_args.kwargs["from_"] == 18
+        assert result["total"] == 7
+
+    @pytest.mark.asyncio
+    async def test_total_handles_plain_int_shape(self):
+        from src.services.search import SearchService
+
+        es = AsyncMock()
+        es.search = AsyncMock(return_value={"hits": {"hits": [], "total": 3}})
+        service = SearchService(es)
+
+        result = await service.search_video("cats")
+
+        assert result["total"] == 3

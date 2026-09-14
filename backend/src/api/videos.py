@@ -9,7 +9,7 @@ from src.schemas.endpoint import ErrorResponse, PaginationQuery
 from src.schemas.privacy import PrivacyLevel, PrivacyResponse
 from src.schemas.reaction import ReactionRequest, ReactionResponse
 from src.schemas.video import VideoCategory, VideoPage, VideoPlayback, VideoPreviewPage
-from src.services.auth import get_current_user_id, get_optional_user_id
+from src.services.dependencies import get_current_user_id, get_optional_user_id
 from src.services.videos import VideoService
 
 router_videos = APIRouter(

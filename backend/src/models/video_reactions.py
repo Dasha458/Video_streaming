@@ -9,9 +9,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.infrastructure.database import Base
 
 if TYPE_CHECKING:
-    from reaction_type import ReactionType
-    from user import User
-    from video import Video
+    from .reaction_type import ReactionType
+    from .user import User
+    from .video import Video
 
 
 class VideoReaction(Base):

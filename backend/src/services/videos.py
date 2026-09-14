@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.core.pagination import paginate_query
+from src.core.status_ids import PRIVACY_PUBLIC_ID, STATUS_READY_ID
 from src.errors.videos import (
     InvalidPrivacyError,
     VideoNotFoundError,
@@ -48,8 +49,8 @@ class VideoService:
         Retrieves public, ready videos. Optionally filters by category and/or channel name.
         """
         filters = [
-            Video.privacy_id == uuid5(NAMESPACE_DNS, "privacy_status:public"),
-            Video.status_id == uuid5(NAMESPACE_DNS, "video_status:ready"),
+            Video.privacy_id == PRIVACY_PUBLIC_ID,
+            Video.status_id == STATUS_READY_ID,
         ]
 
         if category:

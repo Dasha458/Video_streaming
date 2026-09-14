@@ -5,7 +5,7 @@ from typing import AsyncGenerator, BinaryIO, Dict, List, Optional
 from aiobotocore.session import AioBaseClient, get_session
 from botocore.exceptions import ClientError
 
-from src.config import get_s3_settings
+from src.config import get_github_oauth_settings, get_s3_settings
 
 PART_SIZE = 1024 * 1024 * 10
 
@@ -51,7 +51,7 @@ class S3Client:
                                     {
                                         "AllowedHeaders": ["Authorization", "Range"],
                                         "AllowedMethods": ["GET"],
-                                        "AllowedOrigins": ["http://localhost/"],
+                                        "AllowedOrigins": [get_github_oauth_settings().FRONTEND_URL],
                                         "ExposeHeaders": ["ETag"],
                                         "MaxAgeSeconds": 3000,
                                     }

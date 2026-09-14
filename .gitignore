@@ -205,3 +205,14 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Visual Studio (full IDE, not VS Code)
+.vs/
+[Bb]in/
+[Oo]bj/
+
+# Node.js (frontend) - belt and suspenders alongside frontend/.gitignore
+node_modules/
+
+# Helm dependency cache (video-streaming/ is the Helm chart directory)
+video-streaming/charts/

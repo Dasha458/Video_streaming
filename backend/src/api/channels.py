@@ -7,7 +7,7 @@ from fastapi.responses import JSONResponse
 from src.api.dependencies.services import get_channel_service
 from src.schemas.channel import ChannelCreate, ChannelResponse, ChannelSubscriptionItem, ChannelUpdate
 from src.schemas.endpoint import ErrorResponse
-from src.services.auth import get_current_user_id, get_optional_user_id
+from src.services.dependencies import get_current_user_id, get_optional_user_id
 from src.services.channels import ChannelService
 
 router_channels = APIRouter(

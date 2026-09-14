@@ -1,10 +1,11 @@
 from typing import List, Tuple
 from uuid import UUID
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from src.core.pagination import paginate_query
 from src.errors.history import HistoryEntryNotFoundError
 from src.models import Video, WatchHistory
 from src.schemas.history import HistoryVideoItem
@@ -15,25 +16,19 @@ class HistoryService:
         self.session = session
 
     async def list(self, user_id: UUID, page: int, size: int) -> Tuple[List[HistoryVideoItem], int]:
-        total = await self.session.scalar(
-            select(func.count())
-            .select_from(WatchHistory)
-            .where(WatchHistory.user_id == user_id)
-        ) or 0
-
-        result = await self.session.execute(
-            select(WatchHistory)
-            .where(WatchHistory.user_id == user_id)
-            .options(
+        return await paginate_query(
+            self.session,
+            WatchHistory,
+            page=page,
+            size=size,
+            filters=[WatchHistory.user_id == user_id],
+            order_by=WatchHistory.last_watched_at.desc(),
+            preload=[
                 selectinload(WatchHistory.video).selectinload(Video.channel),
                 selectinload(WatchHistory.video).selectinload(Video.privacy),
-            )
-            .order_by(WatchHistory.last_watched_at.desc())
-            .offset((page - 1) * size)
-            .limit(size)
+            ],
+            mapper=self._to_item,
         )
-        entries = result.scalars().all()
-        return [self._to_item(e) for e in entries], total
 
     async def remove(self, user_id: UUID, video_id: UUID) -> None:
         entry = await self.session.scalar(

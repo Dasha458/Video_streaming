@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import ChannelCard from "@/components/ChannelCard";
-import { getMySubscriptions } from "@/lib/api/channelApi";
+import { getMySubscriptions, unsubscribeFromChannel } from "@/lib/api/channelApi";
 import type { ChannelInfo } from "@/lib/api/types";
+import { toast } from "@/components/ui/toast/use-toast";
 
 export default function Subscriptions() {
     const [channels, setChannels] = useState<ChannelInfo[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [unsubscribingId, setUnsubscribingId] = useState<string | null>(null);
 
     useEffect(() => {
         getMySubscriptions()
@@ -14,6 +16,19 @@ export default function Subscriptions() {
             .catch(() => setError("Failed to load subscriptions."))
             .finally(() => setLoading(false));
     }, []);
+
+    const handleUnsubscribe = async (channelName: string) => {
+        setUnsubscribingId(channelName);
+        try {
+            await unsubscribeFromChannel(channelName);
+            setChannels((prev) => prev.filter((c) => c.channel_name !== channelName));
+            toast({ title: `Unsubscribed from ${channelName}` });
+        } catch {
+            toast({ title: "Failed to unsubscribe", variant: "destructive" });
+        } finally {
+            setUnsubscribingId(null);
+        }
+    };
 
     if (loading) {
         return (
@@ -57,6 +72,8 @@ export default function Subscriptions() {
                             handle={`@${channel.channel_name}`}
                             subscribers={`${channel.subscribersCount} subscribers`}
                             description=""
+                            onUnsubscribe={() => handleUnsubscribe(channel.channel_name)}
+                            unsubscribing={unsubscribingId === channel.channel_name}
                         />
                     ))}
                 </div>

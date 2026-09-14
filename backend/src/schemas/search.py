@@ -94,6 +94,11 @@ class VideoResult(BaseModel):
 
 class VideoSearchResponse(BaseModel):
     results: list[VideoResult]
+    total: int = Field(
+        0, description="Total number of matching videos, for pagination."
+    )
+    offset: int = Field(0, description="Offset this page of results started at.")
+    limit: int = Field(0, description="Page size this response was built with.")
 
 
 class VideoHintQuery(BaseModel):
@@ -116,6 +121,12 @@ class VideoSearchRequest(BaseModel):
         ..., min_length=1, description="Search text input (e.g. 'funny cats')."
     )
     limit: int = Field(10, ge=1, le=50, description="Number of results to return.")
+    offset: int = Field(
+        0,
+        ge=0,
+        le=10_000,
+        description="Number of results to skip, for paginating through matches.",
+    )
     smart_search: bool = Field(False, description="Enable hybrid vector + text search.")
 
     query_vector: Optional[List[float]] = Field(

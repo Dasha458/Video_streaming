@@ -29,7 +29,7 @@ from src.schemas.analytics import (
     WatchSessionAck,
     WatchSessionPing,
 )
-from src.services.auth import get_optional_user_id
+from src.services.dependencies import get_optional_user_id
 
 router_analytics = APIRouter(
     prefix="/api/analytics",

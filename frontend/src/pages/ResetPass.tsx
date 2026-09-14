@@ -10,7 +10,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { toast } from "react-hot-toast";
+import { toast } from "@/components/ui/toast/use-toast";
 import { resetPassword } from "@api/authApi";
 
 export default function ResetPass() {
@@ -26,32 +26,32 @@ export default function ResetPass() {
         e.preventDefault();
 
         if (!password || !confirmPassword) {
-            toast.error("All fields are required");
+            toast({ title: "All fields are required", variant: "destructive" });
             return;
         }
 
         if (password !== confirmPassword) {
-            toast.error("Passwords do not match");
+            toast({ title: "Passwords do not match", variant: "destructive" });
             return;
         }
 
         if (password.length < 8) {
-            toast.error("Password must be at least 8 characters long");
+            toast({ title: "Password must be at least 8 characters long", variant: "destructive" });
             return;
         }
 
         if (!token) {
-            toast.error("Invalid or missing reset token");
+            toast({ title: "Invalid or missing reset token", variant: "destructive" });
             return;
         }
 
         try {
             setLoading(true);
             await resetPassword(token, password);
-            toast.success("Password reset successful! You can now log in.");
+            toast({ title: "Password reset successful! You can now log in." });
             navigate("/login");
         } catch {
-            toast.error("Failed to reset password. The link may have expired.");
+            toast({ title: "Failed to reset password. The link may have expired.", variant: "destructive" });
         } finally {
             setLoading(false);
         }

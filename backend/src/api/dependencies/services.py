@@ -3,18 +3,22 @@ from uuid import UUID
 
 from fastapi import Depends
 
+from src.config import get_github_oauth_settings, get_jwt_settings
 from src.infrastructure import (
     get_async_session,
     get_es_client,
     get_rabbit_broker,
     get_s3_client,
 )
+from src.infrastructure.auth import UserManager, get_user_manager, github_oauth_client
 from src.services import get_current_user_id
 from src.services.analytics import AnalyticsService
+from src.services.auth_service import AuthService
 from src.services.channels import ChannelService
 from src.services.comments import CommentService
 from src.services.file_signing import FileSigningService
 from src.services.files import FileService
+from src.services.github_oauth_service import GitHubOAuthService
 from src.services.health import HealthService
 from src.services.history import HistoryService
 from src.services.liked import LikedService
@@ -122,3 +126,21 @@ def get_liked_service(
     session: "AsyncSession" = Depends(get_async_session),
 ) -> LikedService:
     return LikedService(session)
+
+
+def get_auth_service(
+    session: "AsyncSession" = Depends(get_async_session),
+    user_manager: UserManager = Depends(get_user_manager),
+) -> AuthService:
+    return AuthService(session, user_manager)
+
+
+def get_github_oauth_service(
+    session: "AsyncSession" = Depends(get_async_session),
+) -> GitHubOAuthService:
+    return GitHubOAuthService(
+        session,
+        github_oauth_client,
+        get_github_oauth_settings(),
+        get_jwt_settings(),
+    )

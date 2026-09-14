@@ -11,7 +11,7 @@ import {Input} from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Link, useNavigate } from "react-router-dom"
 import { useState } from "react";
-import { toast } from "react-hot-toast";
+import { toast } from "@/components/ui/toast/use-toast";
 import { useAuth } from "@/contexts/AuthContext";
 import { getGithubAuthUrl } from "@api/authApi";
 import { getApiErrorMessage } from "@/utils/apiError";
@@ -36,7 +36,7 @@ export function LoginForm({
             const url = await getGithubAuthUrl();
             window.location.href = url;
         } catch {
-            toast.error("Failed to connect to GitHub");
+            toast({ title: "Failed to connect to GitHub", variant: "destructive" });
             setGithubLoading(false);
         }
     };
@@ -53,7 +53,7 @@ export function LoginForm({
         try {
             setLoading(true);
             await login(email, password);
-            toast.success("Login successful");
+            toast({ title: "Login successful" });
             navigate("/");
         } catch (err: unknown) {
             setError(getApiErrorMessage(err, "Login failed. Please try again."));

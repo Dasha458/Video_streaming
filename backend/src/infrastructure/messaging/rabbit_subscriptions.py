@@ -1,6 +1,6 @@
 import logging
 from typing import TYPE_CHECKING
-from uuid import NAMESPACE_DNS, uuid4, uuid5
+from uuid import uuid4
 
 from fastapi import BackgroundTasks, Depends
 from faststream.rabbit import RabbitExchange, RabbitQueue
@@ -12,6 +12,7 @@ from sqlalchemy.orm import joinedload
 
 from src.config import get_rabbitmq_settings
 from src.core.background_tasks import index_video_in_es
+from src.core.status_ids import status_id_for
 from src.errors.rabbit_broker import (
     UnknownEncoderStatusError,
     VideoEncodingPersistenceError,
@@ -71,7 +72,6 @@ video_status_dlq_queue = RabbitQueue(
     routing_key="video.encode.status.dlq",
 )
 
-
 @rabbit_router.subscriber(
     queue=video_status_queue,
     exchange=video_exchange,
@@ -89,8 +89,8 @@ async def status_handler(
             f"{msg.resolutions}, {msg.video_path} updating database"
         )
 
-        status_id = uuid5(NAMESPACE_DNS, f"video_status:{msg.status.lower()}")
-        if not status_id:
+        status_id = status_id_for(msg.status)
+        if status_id is None:
             raise UnknownEncoderStatusError(msg.status)
 
         await session.execute(

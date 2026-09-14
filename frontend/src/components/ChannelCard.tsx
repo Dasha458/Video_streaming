@@ -9,6 +9,8 @@ interface ChannelCardProps {
     handle?: string;
     subscribers?: string;
     description?: string;
+    onUnsubscribe?: () => void;
+    unsubscribing?: boolean;
 }
 
 export default function ChannelCard({
@@ -17,6 +19,8 @@ export default function ChannelCard({
     handle = "@channel",
     subscribers = "1m subscribers",
     description = "Channel description...",
+    onUnsubscribe,
+    unsubscribing = false,
 }: ChannelCardProps) {
     return (
         <Card className="flex items-start justify-between w-full p-4 border border-border rounded-xl">
@@ -29,7 +33,7 @@ export default function ChannelCard({
                 <div className="flex flex-col">
                     <h3 className="text-sm text-gray-500">{channel_name}</h3>
                     <p className="text-sm text-muted-foreground">
-                        {handle} • {subscribers}
+                        {handle} â€¢ {subscribers}
                     </p>
                     <p className="text-sm text-muted-foreground mt-1 line-clamp-2 max-w-[700px]">
                         {description}
@@ -40,9 +44,11 @@ export default function ChannelCard({
                 <Button
                     variant="outline"
                     className="rounded-full flex items-center gap-2"
+                    onClick={onUnsubscribe}
+                    disabled={!onUnsubscribe || unsubscribing}
                 >
                     <Bell className="w-4 h-4" />
-                    You are subscribed
+                    {unsubscribing ? "Unsubscribing..." : "You are subscribed"}
                 </Button>
             </div>
         </Card>

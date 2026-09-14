@@ -8,8 +8,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.infrastructure import Base
 
 if TYPE_CHECKING:
-    from user import User
-    from video import Video
+    from .user import User
+    from .video import Video
 
 
 class WatchHistory(Base):

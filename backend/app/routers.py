@@ -13,7 +13,7 @@ from src.api.playlists import router_playlists
 from src.api.search import router_search
 from src.api.videos import router_videos
 from src.api.watch_later import router_watch_later
-from src.infrastructure.messaging.rabbit_subsciptions import rabbit_router
+from src.infrastructure.messaging.rabbit_subscriptions import rabbit_router
 
 
 def include_routers(app):

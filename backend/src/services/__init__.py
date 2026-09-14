@@ -1,4 +1,4 @@
-from .auth import get_current_user_id
+from .dependencies import get_current_user_id
 from .reactions import toggle_reaction
 from .videos import VideoService
 

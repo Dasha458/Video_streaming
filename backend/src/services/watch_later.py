@@ -1,11 +1,12 @@
 from typing import List, Tuple
 from uuid import UUID
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from sqlalchemy.exc import IntegrityError
 
+from src.core.pagination import paginate_query
 from src.errors.watch_later import AlreadyInWatchLaterError, WatchLaterEntryNotFoundError
 from src.models import Video, WatchLater
 from src.schemas.watch_later import WatchLaterVideoItem
@@ -16,24 +17,16 @@ class WatchLaterService:
         self.session = session
 
     async def list(self, user_id: UUID, page: int, size: int) -> Tuple[List[WatchLaterVideoItem], int]:
-        total = await self.session.scalar(
-            select(func.count())
-            .select_from(WatchLater)
-            .where(WatchLater.user_id == user_id)
-        ) or 0
-
-        result = await self.session.execute(
-            select(WatchLater)
-            .where(WatchLater.user_id == user_id)
-            .options(
-                selectinload(WatchLater.video).selectinload(Video.channel),
-            )
-            .order_by(WatchLater.added_at.desc())
-            .offset((page - 1) * size)
-            .limit(size)
+        return await paginate_query(
+            self.session,
+            WatchLater,
+            page=page,
+            size=size,
+            filters=[WatchLater.user_id == user_id],
+            order_by=WatchLater.added_at.desc(),
+            preload=[selectinload(WatchLater.video).selectinload(Video.channel)],
+            mapper=self._to_item,
         )
-        entries = result.scalars().all()
-        return [self._to_item(e) for e in entries], total
 
     async def add(self, user_id: UUID, video_id: UUID) -> None:
         entry = WatchLater(user_id=user_id, video_id=video_id)

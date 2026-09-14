@@ -9,8 +9,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 from src.infrastructure.database import Base
 
 if TYPE_CHECKING:
-    from user import User
-    from video import Video
+    from .user import User
+    from .video import Video
 
 
 # --- Association table (many-to-many) ---

@@ -1,7 +1,6 @@
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, List
-from uuid import NAMESPACE_DNS, uuid5
 
 from sqlalchemy import (
     DateTime,
@@ -15,20 +14,21 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
+from src.core.status_ids import STATUS_PROCESSING_ID
 from src.infrastructure.database import Base
 
 if TYPE_CHECKING:
-    from category import Category
-    from channel import Channel
-    from comments import Comment
-    from playlist import Playlist
-    from privacy_status import PrivacyStatus
-    from video_reactions import VideoReaction
-    from video_resolutions import VideoResolution
-    from video_status import VideoStatus
-    from video_views import VideoView
-    from watch_history import WatchHistory
-    from watch_later import WatchLater
+    from .category import Category
+    from .channel import Channel
+    from .comments import Comment
+    from .playlist import Playlist
+    from .privacy_status import PrivacyStatus
+    from .video_reactions import VideoReaction
+    from .video_resolutions import VideoResolution
+    from .video_status import VideoStatus
+    from .video_views import VideoView
+    from .watch_history import WatchHistory
+    from .watch_later import WatchLater
 
 
 class Video(Base):
@@ -66,7 +66,7 @@ class Video(Base):
     status_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("video_statuses.id"),
-        default=uuid5(NAMESPACE_DNS, "video_status:processing"),
+        default=STATUS_PROCESSING_ID,
         nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(

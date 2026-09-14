@@ -7,7 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from src.infrastructure import Base
 
 if TYPE_CHECKING:
-    from video import Video
+    from .video import Video
 
 
 class PrivacyStatus(Base):
