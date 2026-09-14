@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Search } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { SearchFiltersDialog } from "@/components/ui/searchFiltersDialog";
@@ -10,28 +10,20 @@ interface SearchFormProps {
 }
 
 export function SearchForm({ className }: SearchFormProps) {
-    const { searchQuery, setSearchQuery, runSearch, searchFilters, hints, loadHints, setHints } = useSearch();
+    // Hints are fetched (and debounced) inside the hook now.
+    const { searchQuery, setSearchQuery, runSearch, searchFilters, hints } = useSearch();
     const [isFocused, setIsFocused] = useState(false);
-
-    useEffect(() => {
-        const id = setTimeout(() => {
-            if (searchQuery.trim().length >= 1) loadHints(searchQuery);
-            else setHints([]);
-        }, 300);
-        return () => clearTimeout(id);
-    }, [searchQuery, loadHints, setHints]);
 
     const handleHintClick = (hint: string) => {
         setSearchQuery(hint);
         runSearch(hint, searchFilters);
-        setHints([]);
         setIsFocused(false);
     };
 
     const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
         if (e.key === "Enter") {
             e.preventDefault();
-            setHints([]);
+            setIsFocused(false);
             runSearch(searchQuery, searchFilters);
         }
     };
@@ -63,7 +55,7 @@ export function SearchForm({ className }: SearchFormProps) {
                     {/* Search button */}
                     <button
                         type="button"
-                        onClick={() => { setHints([]); runSearch(searchQuery, searchFilters); }}
+                        onClick={() => { setIsFocused(false); runSearch(searchQuery, searchFilters); }}
                         className="flex h-10 w-16 items-center justify-center rounded-r-full border border-border bg-muted hover:bg-muted/80 transition-colors"
                         aria-label="Search"
                     >

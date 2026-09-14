@@ -1,16 +1,16 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { Bell, Play, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import VideoCard from "@/components/VideoCard";
 import InfiniteScroll from "@/components/infinite-scroll";
-import type { ChannelInfo, VideoPreview } from "@api/types";
+import type { ChannelInfo } from "@api/types";
 import channelApi from "@api/channelApi";
-import videoApi from "@api/videoApi";
 import { useAuth } from "@/contexts/AuthContext";
 import { timeAgo } from "@/utils/timeAgo";
 import { Avatar } from "@/components/common/Avatar";
+import { useVideosQuery } from "@/hooks/queries/useVideosQuery";
 
 type Tab = "videos" | "about";
 
@@ -29,24 +29,27 @@ export default function Channel() {
     const [channel, setChannel] = useState<ChannelInfo | null>(null);
     const [channelLoading, setChannelLoading] = useState(true);
 
-    const [videos, setVideos] = useState<VideoPreview[]>([]);
-    const [page, setPage] = useState(1);
-    const [hasMore, setHasMore] = useState(true);
-    const [videosLoading, setVideosLoading] = useState(false);
-
     const [subscribed, setSubscribed] = useState(false);
     const [subLoading, setSubLoading] = useState(false);
 
     const [activeTab, setActiveTab] = useState<Tab>("videos");
+
+    const {
+        videos,
+        hasMore,
+        loadMore,
+        isLoading: videosLoading,
+        isFetchingNextPage,
+    } = useVideosQuery({
+        channelName: channel_name,
+        enabled: Boolean(channel_name),
+    });
 
     // Load channel info
     useEffect(() => {
         if (!channel_name) return;
         setChannelLoading(true);
         setChannel(null);
-        setVideos([]);
-        setPage(1);
-        setHasMore(true);
         setActiveTab("videos");
 
         channelApi
@@ -57,27 +60,6 @@ export default function Channel() {
             })
             .catch(console.error)
             .finally(() => setChannelLoading(false));
-    }, [channel_name]);
-
-    // Load videos with infinite scroll
-    const loadMore = useCallback(async () => {
-        if (videosLoading || !channel_name) return;
-        setVideosLoading(true);
-        try {
-            const data = await videoApi.getVideos({ page, channel_name });
-            if (!data || data.length === 0) { setHasMore(false); return; }
-            setVideos((prev) => [...prev, ...data]);
-            setPage((p) => p + 1);
-        } catch (e) {
-            console.error(e);
-        } finally {
-            setVideosLoading(false);
-        }
-    }, [page, videosLoading, channel_name]);
-
-    useEffect(() => {
-        if (channel_name) loadMore();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [channel_name]);
 
     // Subscribe / unsubscribe with optimistic counter update
@@ -255,7 +237,7 @@ export default function Channel() {
                                 )}
                             </div>
                         ) : (
-                            <InfiniteScroll loadMore={loadMore} hasMore={hasMore}>
+                            <InfiniteScroll loadMore={loadMore} hasMore={Boolean(hasMore)}>
                                 <div className="grid gap-x-4 gap-y-6 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
                                     {videos.map((v) => (
                                         <Link key={v.id} to={`/watch?v=${v.id}`}>
@@ -276,7 +258,7 @@ export default function Channel() {
                                             />
                                         </Link>
                                     ))}
-                                    {videosLoading &&
+                                    {isFetchingNextPage &&
                                         Array.from({ length: 4 }).map((_, i) => <VideoCard key={i} loading />)}
                                 </div>
                             </InfiniteScroll>

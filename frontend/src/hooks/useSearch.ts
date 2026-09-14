@@ -1,282 +1,105 @@
-﻿import { useState, useCallback, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import type {
-  SearchFilters,
-  VideoPreviewWithTime,
-  SearchResponse,
-  VideoPreview,
-  SearchHintsResponse,
-} from "@api/types";
-import { timeAgo } from "@/utils/timeAgo";
-import clientApi from "@api/clientApi";
-import React from "react";
-
-type SetBooleanState = React.Dispatch<React.SetStateAction<boolean>>;
-type SetNumberState = React.Dispatch<React.SetStateAction<number>>;
+import type { SearchFilters, VideoPreviewWithTime } from "@api/types";
+import { useSearchHints, useSearchResultsQuery } from "@/hooks/queries/useSearchQuery";
 
 export interface UseSearchReturn {
-  videos: VideoPreviewWithTime[];
-  loading: boolean;
-  hasMore: boolean;
-  page: number;
-  searchQuery: string;
-  searchFilters: SearchFilters | undefined;
+    videos: VideoPreviewWithTime[];
+    loading: boolean;
+    hasMore: boolean;
+    total: number;
 
-  loadMoreSearchResults: () => Promise<void>;
-  runSearch: (query: string, filters?: SearchFilters) => void;
+    searchQuery: string;
+    setSearchQuery: React.Dispatch<React.SetStateAction<string>>;
+    searchFilters: SearchFilters | undefined;
+    setSearchFilters: React.Dispatch<React.SetStateAction<SearchFilters | undefined>>;
 
-  setSearchFilters: React.Dispatch<
-    React.SetStateAction<SearchFilters | undefined>
-  >;
-  setSearchQuery: React.Dispatch<React.SetStateAction<string>>;
-  setLoading: SetBooleanState;
-  setPage: SetNumberState;
-  setVideos: React.Dispatch<React.SetStateAction<VideoPreviewWithTime[]>>;
-  setHasMore: SetBooleanState;
+    runSearch: (query: string, filters?: SearchFilters) => void;
+    loadMoreSearchResults: () => void;
 
-  // Нові поля для підказок
-  hints: string[];
-  loadHints: (query: string) => Promise<void>;
-  setHints: React.Dispatch<React.SetStateAction<string[]>>;
+    /** Autocomplete suggestions for the current (debounced) query. */
+    hints: string[];
 }
 
-interface ApiVideoItem extends VideoPreview {
-  name?: string;
+/** Debounces a value so typing doesn't fire a request per keystroke. */
+function useDebouncedValue<T>(value: T, delay = 300): T {
+    const [debounced, setDebounced] = useState(value);
+    useEffect(() => {
+        const id = setTimeout(() => setDebounced(value), delay);
+        return () => clearTimeout(id);
+    }, [value, delay]);
+    return debounced;
 }
 
-const PAGE_SIZE = 9;
+function filtersFromParams(params: URLSearchParams): SearchFilters | undefined {
+    const category = params.get("category") || undefined;
+    const minViews = params.get("min_views") ? Number(params.get("min_views")) : undefined;
+    const maxViews = params.get("max_views") ? Number(params.get("max_views")) : undefined;
+    const smartSearch = params.get("smart_search") === "true";
+    const includeDescription = params.get("has_description") === "true";
 
-// Функція пошуку відео
-const fetchSearchResults = async (
-  query: string,
-  filters?: SearchFilters,
-): Promise<VideoPreviewWithTime[]> => {
-  const body = {
-    query,
-    limit: PAGE_SIZE,
-    category: filters?.category === "All" ? undefined : filters?.category,
-    min_views: filters?.minViews,
-    max_views: filters?.maxViews,
-    smart_search: filters?.smartSearch ?? false,
-    has_description: filters?.includeDescription ?? false,
-  };
-
-  try {
-    const response = await clientApi.post<SearchResponse>(
-      `/api/search/video`,
-      body,
-    );
-
-    const results = response.data?.results || [];
-
-    return results.map((item: VideoPreview) => {
-      const serverItem = item as ApiVideoItem;
-      const title = serverItem.name || item.title || "Untitled Video";
-
-      return {
-        ...item,
-        title: title,
-        timeAgo: timeAgo(
-          item.publishedAt || item.createdAt || new Date().toISOString(),
-        ),
-        previewUrl: item.thumbnail_url || item.previewUrl || "/placeholder.jpg",
-      } as VideoPreviewWithTime;
-    });
-  } catch (error) {
-    console.error(error);
-    return [];
-  }
-};
-
-// Функція отримання підказок
-const getHints = async (query: string): Promise<string[]> => {
-  if (!query || query.length < 1) return [];
-  try {
-    const response = await clientApi.get<SearchHintsResponse>(
-      `/api/search/video_hints`,
-      {
-        params: { query },
-      },
-    );
-    return response.data.hints || [];
-  } catch (error) {
-    console.error("[SearchApi] Failed to get hints:", error);
-    return [];
-  }
-};
+    if (!category && !minViews && !maxViews && !smartSearch && !includeDescription) {
+        return undefined;
+    }
+    return { category, minViews, maxViews, smartSearch, includeDescription };
+}
 
 interface UseSearchOptions {
-  enabled?: boolean;
-  initialPage?: number;
+    /** Only the results page actually runs the search query. */
+    enabled?: boolean;
 }
 
-export function useSearch({
-  enabled = false,
-  initialPage = 1,
-}: UseSearchOptions = {}): UseSearchReturn {
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+export function useSearch({ enabled = false }: UseSearchOptions = {}): UseSearchReturn {
+    const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
 
-  const [videos, setVideos] = useState<VideoPreviewWithTime[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [page, setPage] = useState(initialPage);
-  const [hasMore, setHasMore] = useState(true);
+    const urlQuery = searchParams.get("q") || "";
+    const urlFilters = useMemo(() => filtersFromParams(searchParams), [searchParams]);
 
-  const [searchQuery, setSearchQuery] = useState(searchParams.get("q") || "");
+    const [searchQuery, setSearchQuery] = useState(urlQuery);
+    const [searchFilters, setSearchFilters] = useState<SearchFilters | undefined>(urlFilters);
 
-  const [searchFilters, setSearchFilters] = useState<SearchFilters | undefined>(
-    () => {
-      const category = searchParams.get("category") || undefined;
-      const minViews = searchParams.get("min_views")
-        ? Number(searchParams.get("min_views"))
-        : undefined;
-      const maxViews = searchParams.get("max_views")
-        ? Number(searchParams.get("max_views"))
-        : undefined;
-      const smartSearch = searchParams.get("smart_search") === "true";
-      const includeDescription = searchParams.get("has_description") === "true";
+    // The URL is the source of truth for what's being searched; keep the
+    // local input in step when it changes (back/forward, or a new search).
+    useEffect(() => setSearchQuery(urlQuery), [urlQuery]);
+    useEffect(() => setSearchFilters(urlFilters), [urlFilters]);
 
-      if (
-        !category &&
-        !minViews &&
-        !maxViews &&
-        !smartSearch &&
-        !includeDescription
-      )
-        return undefined;
+    const results = useSearchResultsQuery(urlQuery, urlFilters, enabled);
+    const hints = useSearchHints(useDebouncedValue(searchQuery));
 
-      return { category, minViews, maxViews, smartSearch, includeDescription };
-    },
-  );
+    const runSearch = useCallback(
+        (query: string, filters?: SearchFilters) => {
+            const urlParams = new URLSearchParams();
+            if (query) urlParams.set("q", query);
 
-  // Стан для підказок
-  const [hints, setHints] = useState<string[]>([]);
+            if (filters) {
+                if (filters.category && filters.category !== "All")
+                    urlParams.set("category", filters.category);
+                if (filters.minViews) urlParams.set("min_views", filters.minViews.toString());
+                if (filters.maxViews) urlParams.set("max_views", filters.maxViews.toString());
+                if (filters.smartSearch) urlParams.set("smart_search", "true");
+                if (filters.includeDescription) urlParams.set("has_description", "true");
+            }
 
-  // Функція завантаження підказок
-  const loadHints = useCallback(async (query: string) => {
-    // --- ЛОГ 2: Чи доходить виклик до хука? ---
-    console.log("[useSearch] 🎣 loadHints called with:", query);
+            navigate(`/search-results?${urlParams.toString()}`);
+        },
+        [navigate],
+    );
 
-    if (!query || query.trim().length < 1) {
-      setHints([]);
-      return;
-    }
-    const results = await getHints(query);
+    return {
+        videos: results.videos,
+        loading: results.isLoading || results.isFetchingNextPage,
+        hasMore: Boolean(results.hasMore),
+        total: results.total,
 
-    // --- ЛОГ 4: Що повернув API? ---
-    console.log("[useSearch] Hints received:", results);
+        searchQuery,
+        setSearchQuery,
+        searchFilters,
+        setSearchFilters,
 
-    setHints(results);
-  }, []);
+        runSearch,
+        loadMoreSearchResults: results.loadMore,
 
-  const loadMoreSearchResults = useCallback(async () => {
-    if (!enabled) return;
-
-    const nextPage = page + 1;
-    if (!hasMore || loading) return;
-    if (!searchQuery && !searchFilters) return;
-
-    setLoading(true);
-
-    try {
-      const newResults = await fetchSearchResults(searchQuery, searchFilters);
-
-      if (newResults.length < PAGE_SIZE) {
-        setHasMore(false);
-      }
-
-      if (newResults.length > 0) {
-        setVideos((prev) => {
-          const existingIds = new Set(prev.map((v) => v.id));
-          const uniqueNew = newResults.filter((v) => !existingIds.has(v.id));
-          return [...prev, ...uniqueNew];
-        });
-        setPage(nextPage);
-      } else {
-        setHasMore(false);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }, [page, hasMore, loading, searchQuery, searchFilters, enabled]);
-
-  const runSearch = useCallback(
-    (query: string, filters?: SearchFilters) => {
-      setSearchQuery(query);
-      if (filters) setSearchFilters(filters);
-
-      const urlParams = new URLSearchParams();
-      if (query) urlParams.set("q", query);
-
-      if (filters) {
-        if (filters.category && filters.category !== "All")
-          urlParams.set("category", filters.category);
-        if (filters.minViews)
-          urlParams.set("min_views", filters.minViews.toString());
-        if (filters.maxViews)
-          urlParams.set("max_views", filters.maxViews.toString());
-        if (filters.smartSearch) urlParams.set("smart_search", "true");
-        if (filters.includeDescription)
-          urlParams.set("has_description", "true");
-      }
-
-      navigate(`/search-results?${urlParams.toString()}`);
-    },
-    [navigate],
-  );
-
-  useEffect(() => {
-    if (!enabled) return;
-
-    const queryFromUrl = searchParams.get("q") || "";
-
-    if (queryFromUrl !== searchQuery) {
-      setSearchQuery(queryFromUrl);
-    }
-
-    const hasFiltersInUrl =
-      searchParams.has("category") ||
-      searchParams.has("min_views") ||
-      searchParams.has("smart_search");
-
-    if (queryFromUrl || hasFiltersInUrl) {
-      setVideos([]);
-      setPage(1);
-      setHasMore(true);
-      setLoading(true);
-
-      fetchSearchResults(queryFromUrl, searchFilters)
-        .then((newResults) => {
-          setVideos(newResults);
-          setHasMore(newResults.length === PAGE_SIZE);
-          setPage(2);
-        })
-        .catch((err) => console.error(err))
-        .finally(() => setLoading(false));
-    }
-  }, [searchParams, searchFilters, enabled]);
-
-  return {
-    videos,
-    loading,
-    hasMore,
-    page,
-    searchQuery,
-    searchFilters,
-    setSearchFilters,
-    setSearchQuery,
-    runSearch,
-    loadMoreSearchResults,
-    setLoading,
-    setPage,
-    setVideos,
-    setHasMore,
-
-    // Нові властивості
-    hints,
-    loadHints,
-    setHints,
-  };
+        hints,
+    };
 }
