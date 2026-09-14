@@ -9,6 +9,14 @@ class SearchService:
     def __init__(self, es: AsyncElasticsearch):
         self.es = es
 
+    @staticmethod
+    def _total_hits(result: Any) -> int:
+        """Elasticsearch reports totals as {"value": N, "relation": "eq"|"gte"}."""
+        total = result.get("hits", {}).get("total", 0)
+        if isinstance(total, dict):
+            return int(total.get("value", 0))
+        return int(total or 0)
+
     async def get_video_hints(self, query: str, size: int = 10) -> List[str]:
         try:
             suggest_query = {
@@ -44,6 +52,7 @@ class SearchService:
         limit: int = 10,
         smart_search: bool = False,
         has_description: bool = False,
+        offset: int = 0,
     ) -> dict:
         try:
             # ─── Build the base text query ────────────────────────────────
@@ -74,34 +83,40 @@ class SearchService:
             # ─── Text-only search ───────────────────────────────────────
             if not smart_search or not query_vector:
                 result = await self.es.search(
-                    index="videos", query=text_query, size=limit
+                    index="videos", query=text_query, size=limit, from_=offset
                 )
                 return {
                     "hits": [
                         {"id": hit["_id"], **hit["_source"], "score": hit.get("_score")}
                         for hit in result["hits"]["hits"]
-                    ]
+                    ],
+                    "total": self._total_hits(result),
                 }
 
             # ─── Hybrid vector + text search ────────────────────────────
+            # knn's `k` has to cover everything up to the end of the requested
+            # page, since `from_` pages into that same candidate set.
             result = await self.es.search(
                 index="videos",
                 knn={
                     "field": "video_embedding",
                     "query_vector": query_vector,
-                    "k": limit,
-                    "num_candidates": 100,
+                    "k": offset + limit,
+                    "num_candidates": max(100, offset + limit),
                 },
                 _source=["id", "name", "description", "views", "category"],
                 query=text_query,
                 rank={"rrf": {}},
+                size=limit,
+                from_=offset,
             )
 
             return {
                 "hits": [
                     {**hit["_source"], "score": hit.get("_score")}
                     for hit in result["hits"]["hits"]
-                ]
+                ],
+                "total": self._total_hits(result),
             }
         except Exception as ex:
             raise VideoSearchError(query=query, cause=ex)

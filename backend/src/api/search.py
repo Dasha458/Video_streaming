@@ -95,6 +95,12 @@ async def video_search(
         payload.limit,
         payload.smart_search,
         payload.has_description,
+        payload.offset,
     )
 
-    return VideoSearchResponse(results=[VideoResult(**hit) for hit in result["hits"]])
+    return VideoSearchResponse(
+        results=[VideoResult(**hit) for hit in result["hits"]],
+        total=result.get("total", 0),
+        offset=payload.offset,
+        limit=payload.limit,
+    )
