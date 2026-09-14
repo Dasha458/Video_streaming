@@ -1,4 +1,4 @@
-import type { ChannelInfo } from "./types";
+import type { ChannelInfo, ChannelSubscriptionItem } from "./types";
 import clientApi from "./clientApi";
 
 export const getChannelInfo = (channelName: string): Promise<ChannelInfo> =>
@@ -27,9 +27,9 @@ export const subscribeToChannel = (channelName: string): Promise<void> =>
 export const unsubscribeFromChannel = (channelName: string): Promise<void> =>
   clientApi.post(`/api/channels/${channelName}/unsubscribe`).then(() => {});
 
-export const getMySubscriptions = (): Promise<ChannelInfo[]> =>
+export const getMySubscriptions = (): Promise<ChannelSubscriptionItem[]> =>
   clientApi
-    .get<ChannelInfo[]>(`/api/channels/subscriptions`)
+    .get<ChannelSubscriptionItem[]>(`/api/channels/subscriptions`)
     .then((res) => res.data);
 
 export default {

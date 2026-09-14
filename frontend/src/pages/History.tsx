@@ -3,23 +3,28 @@ import InfiniteScroll from "@/components/infinite-scroll";
 import { Link } from "react-router-dom";
 import { getUserHistory, clearUserHistory, removeVideoFromHistory } from "@api/historyApi";
 import { Button } from "@/components/ui/button";
-import { usePagedList } from "@/hooks/usePagedList";
+import { usePagedListQuery } from "@/hooks/queries/usePagedListQuery";
 
 export default function History() {
-    const { items: videos, setItems, loading, hasMore, setHasMore, loadMore } = usePagedList(getUserHistory);
+    const {
+        items: videos,
+        isLoading: loading,
+        hasMore,
+        loadMore,
+        refresh,
+    } = usePagedListQuery("history", getUserHistory);
 
     const handleRemoveVideo = async (videoId: string) => {
         try {
             await removeVideoFromHistory(videoId);
-            setItems((prev) => prev.filter((v) => v.id !== videoId));
+            await refresh();
         } catch { /* ignore */ }
     };
 
     const handleClearHistory = async () => {
         try {
             await clearUserHistory();
-            setItems([]);
-            setHasMore(false);
+            await refresh();
         } catch { /* ignore */ }
     };
 
@@ -36,7 +41,7 @@ export default function History() {
                 {loading && videos.length === 0
                     ? Array.from({ length: 12 }).map((_, i) => <VideoCard key={i} loading />)
                     : (
-                        <InfiniteScroll loadMore={loadMore} hasMore={hasMore}>
+                        <InfiniteScroll loadMore={loadMore} hasMore={Boolean(hasMore)}>
                             {videos.map((video) => (
                                 <div key={video.id} className="relative w-full">
                                     <Link to={`/watch?v=${video.id}`} className="w-full block">

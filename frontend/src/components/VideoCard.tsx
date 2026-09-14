@@ -1,5 +1,5 @@
-import { useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Avatar } from "@/components/common/Avatar";
 
 interface VideoCardProps {
     id?: string;
@@ -22,43 +22,6 @@ const formatViews = (views: number | undefined): string => {
     if (views < 1000) return `${views} views`;
     if (views < 1_000_000) return `${(views / 1000).toFixed(1).replace(/\.0$/, "")}K views`;
     return `${(views / 1_000_000).toFixed(1).replace(/\.0$/, "")}M views`;
-};
-
-const Avatar = ({
-    src,
-    name,
-    size,
-}: {
-    src?: string;
-    name?: string;
-    size: number;
-}) => {
-    const [imgError, setImgError] = useState(false);
-    const initial = (name ?? "?").charAt(0).toUpperCase();
-
-    if (src && !imgError) {
-        return (
-            <img
-                src={src}
-                alt={name}
-                width={size}
-                height={size}
-                className="rounded-full object-cover shrink-0"
-                style={{ width: size, height: size }}
-                loading="lazy"
-                decoding="async"
-                onError={() => setImgError(true)}
-            />
-        );
-    }
-    return (
-        <div
-            className="rounded-full bg-muted flex items-center justify-center shrink-0 text-xs font-semibold text-muted-foreground"
-            style={{ width: size, height: size }}
-        >
-            {initial}
-        </div>
-    );
 };
 
 /* ── Skeletons ─────────────────────────────────────────────────────────── */

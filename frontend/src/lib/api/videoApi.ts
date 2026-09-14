@@ -1,4 +1,5 @@
-﻿import clientApi from "./clientApi";
+﻿import { AxiosError } from "axios";
+import clientApi from "./clientApi";
 import { timeAgo } from "@/utils/timeAgo";
 import type {
   Video,
@@ -7,14 +8,49 @@ import type {
   DownloadResponse,
 } from "./types";
 
+/** Shape of backend src/schemas/video.py's VideoPreview -- what the API
+ * actually returns for listing endpoints, before mapToPreview reshapes it
+ * into the frontend's VideoPreview. */
+interface RawVideoPreview {
+  id: string;
+  title: string;
+  thumbnail: string;
+  channel_avatar: string;
+  channel_name: string;
+  views_count: number;
+  likes_count: number;
+  dislikes_count: number;
+  privacy: string;
+  status: string;
+  created_at: string;
+}
+
+/** Shape of backend src/schemas/video.py's VideoPlayback -- what
+ * GET /api/videos/{id} actually returns, before mapToDetail reshapes it. */
+interface RawVideoPlayback {
+  id: string;
+  name: string;
+  description?: string | null;
+  privacy: string;
+  created_at: string;
+  resolutions: string[];
+  thumbnail_url?: string | null;
+  avatar_url?: string | null;
+  channel_name: string;
+  likes_count: number;
+  dislikes_count: number;
+  views_count: number;
+  master_hls_url?: string | null;
+}
+
 interface VideosResponse {
-  items: VideoPreview[];
+  items: RawVideoPreview[];
   page: number;
   size: number;
   total: number;
 }
 
-export const mapToPreview = (data: any): VideoPreview => ({
+export const mapToPreview = (data: RawVideoPreview): VideoPreview => ({
   id: data.id,
   previewUrl: data.thumbnail || "/placeholder.jpg",
   thumbnail_url: data.thumbnail || "/placeholder.jpg",
@@ -32,20 +68,23 @@ export const mapToPreview = (data: any): VideoPreview => ({
   status: data.status ?? "Ready",
 });
 
-export const mapToDetail = (data: any): Video => ({
-  ...data,
+export const mapToDetail = (data: RawVideoPlayback): Video => ({
+  id: data.id,
+  description: data.description ?? undefined,
   preview_url: data.thumbnail_url || "/placeholder.jpg",
+  thumbnail_url: data.thumbnail_url || "/placeholder.jpg",
   master_hls_url: data.master_hls_url || "",
   created_at: data.created_at || "",
   timeAgo: timeAgo(data.created_at || new Date().toISOString()),
   channel_avatar: data.avatar_url || "",
-  comments: data.comments || [],
   likes_count: data.likes_count ?? 0,
   dislikes_count: data.dislikes_count ?? 0,
   views_count: data.views_count ?? 0,
   channel_name: data.channel_name || "Unknown Channel",
+  name: data.name || "Untitled",
   title: data.name || "Untitled",
   privacy: data.privacy === "public" ? "Public" : "Private",
+  status: "Ready",
 });
 
 export const getVideos = async ({
@@ -64,7 +103,7 @@ export const getVideos = async ({
 };
 
 export const getVideo = async (id: string): Promise<Video> => {
-  const res = await clientApi.get<any>(`/api/videos/${id}`);
+  const res = await clientApi.get<RawVideoPlayback>(`/api/videos/${id}`);
   return mapToDetail(res.data);
 };
 
@@ -110,8 +149,9 @@ export const uploadVideo = async (
     );
 
     return res.data;
-  } catch (err: any) {
-    return Promise.reject(err.response?.data || { message: "Upload failed" });
+  } catch (err) {
+    const axiosErr = err as AxiosError<{ message?: string }>;
+    return Promise.reject(axiosErr.response?.data || { message: "Upload failed" });
   }
 };
 
@@ -119,11 +159,17 @@ export const deleteVideo = async (id: string): Promise<void> => {
   await clientApi.delete(`/api/files/videos/${id}`);
 };
 
+interface PrivacyUpdateResponse {
+  video_id: string;
+  old_privacy: string;
+  updated_privacy: string;
+}
+
 export const updateVideoPrivacy = async (
   id: string,
   isPublic: boolean,
-): Promise<any> => {
-  const res = await clientApi.patch(`/api/videos/${id}/privacy`, null, {
+): Promise<PrivacyUpdateResponse> => {
+  const res = await clientApi.patch<PrivacyUpdateResponse>(`/api/videos/${id}/privacy`, null, {
     params: { updated_privacy: isPublic ? "public" : "private" },
   });
   return res.data;

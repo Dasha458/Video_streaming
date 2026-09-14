@@ -3,10 +3,15 @@ import VideoCard from "@/components/VideoCard";
 import InfiniteScroll from "@/components/infinite-scroll";
 import { ThumbsUp } from "lucide-react";
 import { getLikedVideos } from "@api/likedApi";
-import { usePagedList } from "@/hooks/usePagedList";
+import { usePagedListQuery } from "@/hooks/queries/usePagedListQuery";
 
 export default function Liked() {
-    const { items: videos, loading, hasMore, loadMore } = usePagedList(getLikedVideos);
+    const {
+        items: videos,
+        isLoading: loading,
+        hasMore,
+        loadMore,
+    } = usePagedListQuery("liked", getLikedVideos);
 
     return (
         <div className="px-4 py-4">
@@ -24,7 +29,7 @@ export default function Liked() {
                 </div>
             ) : (
                 <div className="grid gap-x-4 gap-y-8 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 pb-10">
-                    <InfiniteScroll loadMore={loadMore} hasMore={hasMore}>
+                    <InfiniteScroll loadMore={loadMore} hasMore={Boolean(hasMore)}>
                         {videos.map((video) => (
                             <Link key={video.id} to={`/watch?v=${video.id}`} className="w-full">
                                 <VideoCard

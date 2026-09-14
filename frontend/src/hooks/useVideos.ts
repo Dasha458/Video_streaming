@@ -1,192 +1,67 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
-import { getVideos, getVideo, getVideoPreviewsByCategory } from "@api/videoApi";
-import { timeAgo } from "@/utils/timeAgo";
-import type {
-  VideoComment,
-  VideoDetail,
-  SearchFilters,
-  VideoPreviewWithTime,
-} from "@api/types";
+import { useCallback, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { search } from "@api/searchApi";
+import { useQueryClient } from "@tanstack/react-query";
+import { useVideoQuery, useVideosQuery } from "@/hooks/queries/useVideosQuery";
+import type { VideoDetail } from "@api/types";
 
-// ���̲���: ������ UseVideoResult �������� � ���������� TypeScript ������� ��� ����������.
-
-export function useVideo(activeCategory: string = "All") {
-  const [searchParams] = useSearchParams();
-  const videoId = searchParams.get("v");
-
-  const [video, setVideo] = useState<VideoDetail | null>(null);
-  const [videos, setVideos] = useState<VideoPreviewWithTime[]>([]);
-  const [comments, setComments] = useState<VideoComment[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
-
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchFilters, setSearchFilters] = useState<SearchFilters | undefined>(
-    undefined,
-  );
-
-  const formatViews = useCallback((views: number | undefined): string => {
+/** Formats raw view counts the way YouTube does: 1.2K / 3.4M. */
+export function formatViews(views: number | undefined): string {
     if (views === undefined) return "";
     if (views < 1000) return `${views}`;
-    if (views < 1000000)
-      return `${(views / 1000).toFixed(1).replace(/\.0$/, "")}K`;
-    return `${(views / 1000000).toFixed(1).replace(/\.0$/, "")}M`;
-  }, []);
+    if (views < 1_000_000) return `${(views / 1000).toFixed(1).replace(/\.0$/, "")}K`;
+    return `${(views / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
+}
 
-  const metaDataText = useMemo(() => {
-    if (!video) return "";
-    const viewCountText = formatViews(video.views);
-    return `${viewCountText} views${video.timeAgo ? " \u00b7 " + video.timeAgo : ""}`;
-  }, [video, formatViews]);
+/**
+ * Everything the watch page needs: the video itself plus the "up next" list.
+ *
+ * Both are React Query-backed now. The hook used to expose its raw state
+ * setters (setVideos/setPage/setLoading/setHasMore), which let callers
+ * corrupt its internals; it now exposes actions only. `setVideo` is kept
+ * as a narrow local override so optimistic like/dislike updates can patch
+ * the cached video without a refetch.
+ */
+export function useVideo(activeCategory: string = "All") {
+    const [searchParams] = useSearchParams();
+    const videoId = searchParams.get("v") ?? undefined;
+    const queryClient = useQueryClient();
 
-  const fetchVideo = useCallback(async () => {
-    if (!videoId) return;
-    try {
-      const data = await getVideo(videoId);
-      const createdDate = data.created_at || new Date().toISOString();
-      setError(null);
-      setVideo({
-        id: data.id || "",
-        title: data.title || "",
-        previewUrl: data.thumbnail_url || data.preview_url || "",
-        createdAt: createdDate,
-        channel_avatar: data.channel_avatar || "",
-        hlsUrl: data.master_hls_url || "",
-        channel: data.channel_name || "Unknown Channel",
-        views: data.views_count ?? 0,
-        privacy: data.privacy || "Private",
-        likesCount: data.likes_count ?? 0,
-        dislikesCount: data.dislikes_count ?? 0,
-        description:
-          data.description || "No description provided for this video.",
-        timeAgo: timeAgo(createdDate),
-      } as VideoDetail);
-      setComments(data.comments ?? []);
-    } catch (err) {
-      console.error(err);
-      setError("Video not found");
-    } finally {
-      setLoading(false);
-    }
-  }, [videoId, setError, setVideo, setComments]);
+    const { video: fetchedVideo, error, isLoading } = useVideoQuery(videoId);
+    const list = useVideosQuery({ category: activeCategory, excludeId: videoId });
 
-  const loadMore = useCallback(async () => {
-    if (!hasMore || loading) return;
+    // Local optimistic patch layered over the cached video.
+    const [override, setOverride] = useState<VideoDetail | null>(null);
+    const video = override ?? fetchedVideo;
 
-    try {
-      const nextPage = page + 1;
-      const newVideos =
-        activeCategory && activeCategory !== "All"
-          ? await getVideoPreviewsByCategory(activeCategory, nextPage)
-          : await getVideos({ page: nextPage });
+    const setVideo = useCallback(
+        (next: VideoDetail | ((prev: VideoDetail | null) => VideoDetail | null) | null) => {
+            setOverride((prev) => {
+                const base = prev ?? fetchedVideo;
+                const resolved = typeof next === "function" ? next(base) : next;
+                if (resolved && videoId) {
+                    queryClient.setQueryData(["video", videoId], resolved);
+                }
+                return resolved;
+            });
+        },
+        [fetchedVideo, queryClient, videoId],
+    );
 
-      const videosWithTime: VideoPreviewWithTime[] = newVideos
-        .filter((v) => v.id !== videoId)
-        .map((v) => ({
-          ...v,
-          timeAgo: timeAgo(v.createdAt || new Date().toISOString()),
-        }));
+    const metaDataText = useMemo(() => {
+        if (!video) return "";
+        return `${formatViews(video.views)} views${video.timeAgo ? " · " + video.timeAgo : ""}`;
+    }, [video]);
 
-      setVideos((prev) => [...prev, ...videosWithTime]);
-      setPage(nextPage);
-      setHasMore(newVideos.length > 0);
-    } catch (err) {
-      console.error(err);
-    }
-  }, [page, hasMore, loading, videoId, activeCategory, setVideos, setPage, setHasMore]);
-
-  const loadMoreSearchResults = useCallback(async () => {
-    if (!hasMore || loading) return;
-    if (!searchQuery) return;
-    setLoading(true);
-
-    try {
-      const nextPage = page + 1;
-      const newResults = await search(searchQuery, searchFilters);
-
-      const resultsWithTime: VideoPreviewWithTime[] = newResults.map((v) => ({
-        ...v,
-        timeAgo: timeAgo(v.createdAt || new Date().toISOString()),
-      }));
-
-      setVideos((prev) => [...prev, ...resultsWithTime]);
-      setPage(nextPage);
-      setHasMore(newResults.length > 0);
-    } catch (err) {
-      console.error("Error with loading results:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [
-    page,
-    hasMore,
-    loading,
-    searchQuery,
-    searchFilters,
-    setLoading,
-    setVideos,
-    setPage,
-    setHasMore,
-    search,
-  ]);
-
-  const fetchInitialVideos = useCallback(async () => {
-    try {
-      setLoading(true);
-      const firstVideos =
-        activeCategory && activeCategory !== "All"
-          ? await getVideoPreviewsByCategory(activeCategory, 1)
-          : await getVideos({ page: 1 });
-
-      const initialVideosWithTime: VideoPreviewWithTime[] = firstVideos
-        .filter((v) => v.id !== videoId)
-        .map((v) => ({
-          ...v,
-          timeAgo: timeAgo(v.createdAt || new Date().toISOString()),
-        }));
-
-      setVideos(initialVideosWithTime);
-      setPage(1);
-      setHasMore(firstVideos.length > 0);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }, [videoId, activeCategory, setLoading, setVideos, setPage, setHasMore]);
-
-  useEffect(() => {
-    fetchVideo();
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }, [fetchVideo]);
-
-  useEffect(() => {
-    fetchInitialVideos();
-  }, [fetchInitialVideos]);
-
-  return {
-    video,
-    videos,
-    comments,
-    error,
-    loading,
-    hasMore,
-    loadMore,
-    formatViews,
-    metaDataText,
-    setVideos,
-    loadMoreSearchResults,
-    setSearchQuery,
-    setSearchFilters,
-    searchQuery,
-    setPage,
-    setLoading,
-    setHasMore,
-    page,
-    setVideo,
-  };
+    return {
+        video,
+        videos: list.videos,
+        error,
+        loading: isLoading,
+        hasMore: Boolean(list.hasMore),
+        loadMore: list.loadMore,
+        isFetchingMore: list.isFetchingNextPage,
+        formatViews,
+        metaDataText,
+        setVideo,
+    };
 }

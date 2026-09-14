@@ -3,12 +3,13 @@ import CreateChannelGate from "@/components/CreateChannelGate";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
-import {Upload, X, ImagePlus, Film, CheckCircle2, Lock, Globe, ChevronDown} from "lucide-react";
+import {Upload, X, ImagePlus, Film, CheckCircle2, Lock, Globe} from "lucide-react";
 import api from "@api/videoApi";
 import categoriesApi from "@api/categoriesApi";
 import {useToast} from "@/components/ui/toast/use-toast";
 import type {Category} from "@api/types";
 import {getErrorMessage} from "@/utils/error";
+import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
 
 type Privacy = "public" | "private";
 
@@ -24,11 +25,9 @@ export default function UploadPage() {
     const [dragging, setDragging] = useState(false);
     const [loading, setLoading] = useState(false);
     const [done, setDone] = useState(false);
-    const [showCategoryMenu, setShowCategoryMenu] = useState(false);
 
     const videoInputRef = useRef<HTMLInputElement>(null);
     const thumbInputRef = useRef<HTMLInputElement>(null);
-    const categoryRef = useRef<HTMLDivElement>(null);
     const {toast} = useToast();
 
     useEffect(() => {
@@ -36,17 +35,6 @@ export default function UploadPage() {
             toast({title: "Failed to load categories", variant: "destructive"});
         });
     }, [toast]);
-
-    // Close category dropdown on outside click
-    useEffect(() => {
-        const handler = (e: MouseEvent) => {
-            if (categoryRef.current && !categoryRef.current.contains(e.target as Node)) {
-                setShowCategoryMenu(false);
-            }
-        };
-        document.addEventListener("mousedown", handler);
-        return () => document.removeEventListener("mousedown", handler);
-    }, []);
 
     const pickVideo = (file: File) => {
         setVideoFile(file);
@@ -113,8 +101,6 @@ export default function UploadPage() {
         if (bytes >= 1_000_000_000) return `${(bytes / 1_000_000_000).toFixed(1)} GB`;
         return `${(bytes / 1_000_000).toFixed(1)} MB`;
     };
-
-    const selectedCategory = categories.find((c) => c.name.toLowerCase() === category);
 
     /* ── Phase 1: Drop zone ─────────────────────────────────────── */
     if (!videoFile) {
@@ -265,34 +251,18 @@ export default function UploadPage() {
                     {/* Category */}
                     <div>
                         <Label className="text-sm font-medium mb-1.5 block">Category</Label>
-                        <div ref={categoryRef} className="relative">
-                            <button
-                                onClick={() => setShowCategoryMenu((v) => !v)}
-                                className="w-full flex items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm hover:bg-muted/50 transition-colors"
-                            >
-                                <span className={selectedCategory ? "" : "text-muted-foreground"}>
-                                    {selectedCategory?.name ?? "Select a category"}
-                                </span>
-                                <ChevronDown className="h-4 w-4 text-muted-foreground"/>
-                            </button>
-                            {showCategoryMenu && (
-                                <div
-                                    className="absolute z-20 mt-1 w-full max-h-56 overflow-y-auto rounded-md border border-border bg-popover shadow-md">
-                                    {categories.map((c) => (
-                                        <button
-                                            key={c.id}
-                                            onClick={() => {
-                                                setCategory(c.name.toLowerCase());
-                                                setShowCategoryMenu(false);
-                                            }}
-                                            className={`w-full text-left px-3 py-2 text-sm hover:bg-muted transition-colors ${category === c.name.toLowerCase() ? "bg-muted font-medium" : ""}`}
-                                        >
-                                            {c.name}
-                                        </button>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
+                        <Select value={category || undefined} onValueChange={setCategory}>
+                            <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select a category" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {categories.map((c) => (
+                                    <SelectItem key={c.id} value={c.name.toLowerCase()}>
+                                        {c.name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
                     </div>
 
                     {/* Privacy */}

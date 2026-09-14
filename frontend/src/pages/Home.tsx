@@ -1,34 +1,20 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { Link } from "react-router-dom";
 import VideoCard from "@/components/VideoCard";
 import InfiniteScroll from "@/components/infinite-scroll";
 import categoriesApi from "@api/categoriesApi";
 import type { Category } from "@api/types";
-import videoApi from "@api/videoApi";
-import { timeAgo } from "@/utils/timeAgo";
 import { formatCategoryName } from "@/utils/formatters";
-
-interface Video {
-    id: string;
-    title: string;
-    thumbnail: string;
-    channel_avatar: string;
-    channel_name: string;
-    views?: number;
-    timeAgo?: string;
-}
-
-const PAGE_SIZE = 12;
+import { useVideosQuery, VIDEOS_PAGE_SIZE } from "@/hooks/queries/useVideosQuery";
 
 export default function Home() {
     const [categories, setCategories] = useState<Category[]>([]);
     const [activeCategory, setActiveCategory] = useState<string>("All");
-    const [videos, setVideos] = useState<Video[]>([]);
-    const [page, setPage] = useState(1);
-    const [loading, setLoading] = useState(false);
-    const [hasMore, setHasMore] = useState(true);
-    const isFetchingRef = useRef(false);
     const pillsRef = useRef<HTMLDivElement>(null);
+
+    const { videos, isLoading, isFetchingNextPage, hasMore, loadMore, error } = useVideosQuery({
+        category: activeCategory,
+    });
 
     useEffect(() => {
         categoriesApi
@@ -36,49 +22,6 @@ export default function Home() {
             .then((data) => setCategories([{ id: "all", name: "All" }, ...data]))
             .catch(console.error);
     }, []);
-
-    const fetchVideos = useCallback(async (currentPage: number, category: string, isReset = false) => {
-        if (isFetchingRef.current || (!hasMore && !isReset)) return;
-        isFetchingRef.current = true;
-        setLoading(true);
-        try {
-            const fetchedData = category && category !== "All"
-                ? await videoApi.getVideoPreviewsByCategory(category, currentPage, PAGE_SIZE)
-                : await videoApi.getVideos({ page: currentPage, size: PAGE_SIZE });
-
-            const mapped: Video[] = fetchedData.map((v) => ({
-                id: v.id,
-                title: v.title || "Untitled",
-                thumbnail: v.previewUrl || "/placeholder.jpg",
-                channel_avatar: v.channel_avatar || "",
-                channel_name: v.channel_name || v.channel || "Unknown",
-                views: v.views,
-                timeAgo: v.createdAt ? timeAgo(v.createdAt) : undefined,
-            }));
-
-            setHasMore(mapped.length >= PAGE_SIZE);
-            setVideos((prev) => {
-                const base = isReset ? [] : prev;
-                const ids = new Set(base.map((v) => v.id));
-                return [...base, ...mapped.filter((v) => !ids.has(v.id))];
-            });
-            setPage(currentPage + 1);
-        } catch (err) {
-            console.error(err);
-        } finally {
-            setLoading(false);
-            isFetchingRef.current = false;
-        }
-    }, [hasMore]);
-
-    useEffect(() => {
-        fetchVideos(1, activeCategory, true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [activeCategory]);
-
-    const loadMore = useCallback(() => {
-        if (!loading && hasMore) fetchVideos(page, activeCategory);
-    }, [fetchVideos, page, activeCategory, loading, hasMore]);
 
     /* drag-scroll pills */
     const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -116,24 +59,29 @@ export default function Home() {
 
             {/* Video grid — YouTube-style: max 4 cols on xl, wider cards */}
             <div className="grid gap-x-4 gap-y-10 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 pb-10">
-                {videos.length === 0 && loading ? (
-                    Array.from({ length: PAGE_SIZE }).map((_, i) => <VideoCard key={i} loading />)
+                {videos.length === 0 && error ? (
+                    <div className="col-span-full flex flex-col items-center justify-center py-20 gap-2 text-muted-foreground">
+                        <p className="text-base font-medium text-foreground">Couldn't load videos</p>
+                        <p className="text-sm">Check your connection and try again.</p>
+                    </div>
+                ) : videos.length === 0 && isLoading ? (
+                    Array.from({ length: VIDEOS_PAGE_SIZE }).map((_, i) => <VideoCard key={i} loading />)
                 ) : (
-                    <InfiniteScroll loadMore={loadMore} hasMore={hasMore}>
+                    <InfiniteScroll loadMore={loadMore} hasMore={Boolean(hasMore)}>
                         {videos.map((video) => (
                             <Link key={video.id} to={`/watch?v=${video.id}`}>
                                 <VideoCard
                                     id={video.id}
-                                    title={video.title}
-                                    thumbnail={video.thumbnail}
+                                    title={video.title || "Untitled"}
+                                    thumbnail={video.previewUrl || "/placeholder.jpg"}
                                     channel_avatar={video.channel_avatar}
-                                    channel_name={video.channel_name}
+                                    channel_name={video.channel_name || video.channel}
                                     views={video.views}
                                     timeAgo={video.timeAgo}
                                 />
                             </Link>
                         ))}
-                        {loading && videos.length > 0 && (
+                        {isFetchingNextPage && (
                             <>
                                 {Array.from({ length: 4 }).map((_, i) => <VideoCard key={`sk-${i}`} loading />)}
                             </>

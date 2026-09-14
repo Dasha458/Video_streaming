@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
     Eye, ThumbsUp, MessageSquare, MoreVertical, Search,
@@ -8,6 +8,7 @@ import { timeAgo } from "@/utils/timeAgo";
 import videoApi from "@api/videoApi";
 import type { VideoPreview } from "@api/types";
 import { toast } from "@/components/ui/toast/use-toast";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 type StatusFilter = "all" | "public" | "private" | "processing";
 
@@ -23,19 +24,7 @@ function VideoMenu({ video, onPrivacyChange, onDelete }: {
     onPrivacyChange: (id: string, isPublic: boolean) => void;
     onDelete: (id: string) => void;
 }) {
-    const [open, setOpen] = useState(false);
-    const ref = useRef<HTMLDivElement>(null);
     const navigate = useNavigate();
-
-    useEffect(() => {
-        if (!open) return;
-        function handle(e: MouseEvent) {
-            if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-        }
-        document.addEventListener("mousedown", handle);
-        return () => document.removeEventListener("mousedown", handle);
-    }, [open]);
-
     const isPublic = (video.privacy ?? "public").toLowerCase() === "public";
 
     const actions = [
@@ -60,7 +49,6 @@ function VideoMenu({ video, onPrivacyChange, onDelete }: {
                 } catch {
                     toast({ title: "Failed to update privacy", variant: "destructive" });
                 }
-                setOpen(false);
             },
         },
         {
@@ -75,35 +63,26 @@ function VideoMenu({ video, onPrivacyChange, onDelete }: {
                 } catch {
                     toast({ title: "Failed to delete video", variant: "destructive" });
                 }
-                setOpen(false);
             },
         },
     ];
 
     return (
-        <div ref={ref} className="relative shrink-0">
-            <button
-                onClick={(e) => { e.preventDefault(); setOpen((v) => !v); }}
-                className="p-1.5 rounded-full hover:bg-muted transition-colors opacity-0 group-hover:opacity-100"
-            >
-                <MoreVertical className="h-4 w-4 text-muted-foreground" />
-            </button>
-
-            {open && (
-                <div className="absolute right-0 top-8 z-50 min-w-[170px] rounded-md border bg-popover shadow-md py-1">
-                    {actions.map((a, i) => (
-                        <button
-                            key={i}
-                            onClick={a.onClick}
-                            className="w-full flex items-center gap-2.5 px-3 py-2 text-sm hover:bg-muted transition-colors text-left"
-                        >
-                            {a.icon}
-                            {a.label}
-                        </button>
-                    ))}
-                </div>
-            )}
-        </div>
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <button className="p-1.5 rounded-full hover:bg-muted transition-colors opacity-0 group-hover:opacity-100 shrink-0">
+                    <MoreVertical className="h-4 w-4 text-muted-foreground" />
+                </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-[170px]">
+                {actions.map((a, i) => (
+                    <DropdownMenuItem key={i} onSelect={a.onClick}>
+                        {a.icon}
+                        {a.label}
+                    </DropdownMenuItem>
+                ))}
+            </DropdownMenuContent>
+        </DropdownMenu>
     );
 }
 
@@ -203,7 +182,7 @@ export default function YourVideos() {
             ) : (
                 <div className="divide-y divide-border">
                     {filtered.map((v) => {
-                        const statusKey = (v as any).status ?? "Ready";
+                        const statusKey = v.status ?? "Ready";
                         const status = STATUS_LABEL[statusKey] ?? { label: statusKey, color: "text-muted-foreground" };
                         return (
                             <div key={v.id} className="flex gap-4 py-3 group">
@@ -211,7 +190,7 @@ export default function YourVideos() {
                                 <Link to={`/watch?v=${v.id}`} className="shrink-0">
                                     <div className="relative rounded-xl overflow-hidden bg-muted" style={{ width: 160, height: 90 }}>
                                         <img
-                                            src={v.thumbnail_url || (v as any).previewUrl || ""}
+                                            src={v.thumbnail_url || v.previewUrl || ""}
                                             alt={v.title}
                                             className="w-full h-full object-cover"
                                             loading="lazy"
@@ -244,7 +223,7 @@ export default function YourVideos() {
                                     </div>
                                     <div className="flex items-center gap-1.5 w-20">
                                         <MessageSquare className="h-4 w-4" />
-                                        <span>{((v as any).commentCount ?? 0).toLocaleString()}</span>
+                                        <span>{(v.commentCount ?? 0).toLocaleString()}</span>
                                     </div>
                                 </div>
 

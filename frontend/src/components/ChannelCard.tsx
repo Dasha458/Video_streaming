@@ -1,6 +1,7 @@
 import { Card } from "@/components/ui/card";
 import { Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Avatar } from "@/components/common/Avatar";
 
 interface ChannelCardProps {
     id?: string;
@@ -25,11 +26,7 @@ export default function ChannelCard({
     return (
         <Card className="flex items-start justify-between w-full p-4 border border-border rounded-xl">
             <div className="flex items-start gap-4">
-                <img
-                    src={channel_avatar}
-                    alt={channel_name}
-                    className="w-20 h-20 rounded-full object-cover"
-                />
+                <Avatar src={channel_avatar} name={channel_name} size={80} />
                 <div className="flex flex-col">
                     <h3 className="text-sm text-gray-500">{channel_name}</h3>
                     <p className="text-sm text-muted-foreground">
