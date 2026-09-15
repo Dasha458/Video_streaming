@@ -20,7 +20,7 @@ class WatchHistory(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     last_watched_at: Mapped[datetime] = mapped_column(
-        DateTime, default=func.now, nullable=False
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
     user_id: Mapped[uuid.UUID] = mapped_column(
