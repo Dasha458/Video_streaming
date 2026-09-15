@@ -54,6 +54,7 @@ dev = [
     "types-requests>=2.32.4.20250913",
     "types-ujson>=5.10.0.20250822",
     "types-pytz>=2025.2.0.20251108",
+    "testcontainers[postgres]>=4.9",
 ]
 
 [tool.black]
@@ -101,6 +102,9 @@ exclude = "(alembic|.venv)"
 pythonpath = ["."]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+markers = [
+    "integration: needs Docker (Testcontainers Postgres); excluded from the default run, see tests/integration/",
+]
 
 [tool.babel]
 source-paths = ["src"]
