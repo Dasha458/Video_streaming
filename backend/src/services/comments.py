@@ -75,23 +75,27 @@ class CommentService:
                 select(Comment).where(Comment.id == parent_id)
             )
             if parent_comment and parent_comment.user_id != user_id:
-                self.session.add(Notification(
-                    user_id=parent_comment.user_id,
-                    content="Someone replied to your comment",
-                    link=f"/watch?v={video_id}",
-                    notification_type="comment_reply",
-                ))
+                self.session.add(
+                    Notification(
+                        user_id=parent_comment.user_id,
+                        content="Someone replied to your comment",
+                        link=f"/watch?v={video_id}",
+                        notification_type="comment_reply",
+                    )
+                )
         else:
             channel = await self.session.scalar(
                 select(Channel).where(Channel.id == video.channel_id)
             )
             if channel and channel.user_id != user_id:
-                self.session.add(Notification(
-                    user_id=channel.user_id,
-                    content="Someone commented on your video",
-                    link=f"/watch?v={video_id}",
-                    notification_type="new_comment",
-                ))
+                self.session.add(
+                    Notification(
+                        user_id=channel.user_id,
+                        content="Someone commented on your video",
+                        link=f"/watch?v={video_id}",
+                        notification_type="new_comment",
+                    )
+                )
 
         await self.session.commit()
 
@@ -129,4 +133,5 @@ class CommentService:
             target_field=CommentReaction.comment_id,
             target_id=comment_id,
             reaction_name=reaction_name,
+            parent_model=Comment,
         )
