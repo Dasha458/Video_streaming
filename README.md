@@ -66,7 +66,7 @@ cd Docker
 docker compose up -d
 ```
 
-Запустяться 15 сервісів: nginx, bff, frontend, convertor, postgres, redis, rabbitmq, minio, elasticsearch, keycloak, vault, prometheus, grafana, loki, promtail.
+Запустяться 14 сервісів: nginx, bff, frontend, convertor, postgres, redis, rabbitmq, minio, elasticsearch, vault, prometheus, grafana, loki, promtail.
 
 ### 4. Застосування міграцій бази даних
 
