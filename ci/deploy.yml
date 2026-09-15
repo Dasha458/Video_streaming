@@ -1,8 +1,3 @@
-stages:
-  - detect
-  - build
-  - deploy
-
 variables:
   REGISTRY: $CI_REGISTRY/$CI_PROJECT_PATH
 
