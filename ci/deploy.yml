@@ -1,10 +1,6 @@
-stages:
-  - detect
-  - build
-  - deploy
-
 variables:
   REGISTRY: $CI_REGISTRY/$CI_PROJECT_PATH
+  TRIVY_VERSION: "0.56.2"
 
 # ---------------- Detect changed services ----------------
 detect-changes:
@@ -46,6 +42,10 @@ deploy:
       - SERVICE: frontend
   script:
     - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+    # Trivy CLI, installed once per job run regardless of whether this
+    # SERVICE actually rebuilds -- cheap, and keeps the script below simple.
+    - apk add --no-cache curl
+    - curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v$TRIVY_VERSION
     - |
       if [ "$SERVICE" = "frontend" ]; then
         PATH_TO_SERVICE="./frontend"
@@ -60,6 +60,10 @@ deploy:
       if grep -q "^$SERVICE=true" changes.env; then
         IMAGE="$REGISTRY/$SERVICE:$CI_COMMIT_SHA"
         docker build -t $IMAGE $PATH_TO_SERVICE
+        # Scan before push: a HIGH/CRITICAL vulnerability with a known fix
+        # blocks the push. --ignore-unfixed skips CVEs with no available fix
+        # (mostly base-image noise nothing here can act on).
+        trivy image --severity HIGH,CRITICAL --exit-code 1 --ignore-unfixed $IMAGE
         docker push $IMAGE
         docker tag $IMAGE $REGISTRY/$SERVICE:latest
         docker push $REGISTRY/$SERVICE:latest

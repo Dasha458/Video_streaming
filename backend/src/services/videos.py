@@ -103,6 +103,7 @@ class VideoService:
             target_field=VideoReaction.video_id,
             target_id=video_id,
             reaction_name=reaction_name,
+            parent_model=Video,
         )
 
     async def update_privacy(

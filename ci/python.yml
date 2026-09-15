@@ -31,7 +31,10 @@ test-python:
   extends: .python-job
   stage: test
   script:
+    # -m "not integration" excludes tests/integration/ (needs Docker; runs
+    # in the dedicated test-integration-python job below instead).
     - uv run pytest \
+      -m "not integration" \
       --cov=. \
       --cov-report=term \
       --cov-report=xml:coverage-${SERVICE//\//-}.xml \
@@ -50,4 +53,44 @@ test-python:
       coverage_report:
         coverage_format: cobertura
         path: $SERVICE/coverage.xml
+    expire_in: 1 week
+
+# Only backend has tests/integration/ (real-Postgres tests for
+# AnalyticsService and the paginate_query() consolidation -- see
+# tests/integration/conftest.py for why these aren't mocked). Runs the
+# Docker-backed suite that test-python above deliberately excludes.
+test-integration-python:
+  image: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
+  stage: test
+  services:
+    - docker:dind
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+    PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip/backend-integration"
+    UV_CACHE_DIR: "$CI_PROJECT_DIR/.cache/uv/backend-integration"
+  before_script:
+    - cd backend
+    - uv sync --frozen
+  cache:
+    key: "$CI_COMMIT_REF_SLUG-backend-integration"
+    paths:
+      - .cache/pip
+      - .cache/uv
+  script:
+    # loop-scope flags: the engine/session fixtures in tests/integration/conftest.py
+    # are session-scoped (one Testcontainers Postgres for the whole run), so every
+    # test's own asyncio loop must be session-scoped too, or asyncpg raises "Future
+    # attached to a different loop". See tests/integration/conftest.py for detail.
+    - uv run pytest \
+      -m integration \
+      -o asyncio_default_test_loop_scope=session \
+      -o asyncio_default_fixture_loop_scope=session \
+      tests/integration/ --junitxml=report-integration.xml
+  artifacts:
+    when: always
+    paths:
+      - backend/report-integration.xml
+    reports:
+      junit: backend/report-integration.xml
     expire_in: 1 week

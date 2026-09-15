@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
 from src.errors.reactions import InvalidReactionTypeError
-from src.models import CommentReaction, ReactionType
+from src.models import Comment, CommentReaction, ReactionType, Video
 from src.models.video_reactions import VideoReaction
 
 
@@ -20,6 +20,7 @@ async def toggle_reaction(
     ],  # target_model.video_id or target_model.comment_id
     target_id: uuid.UUID,
     reaction_name: str,  # e.g. "like" or "love"
+    parent_model: Type[Video] | Type[Comment],
 ) -> dict[str, int]:
     """Toggle reaction for a user on a video or comment."""
 
@@ -67,4 +68,14 @@ async def toggle_reaction(
         .group_by(ReactionType.name)
     )
     counts = {name: count for name, count in result.all()}
+
+    # Video/Comment carry denormalized likes_count/dislikes_count for cheap
+    # reads (feed cards, analytics) -- keep them in sync with the reaction
+    # rows that are the source of truth.
+    parent = await session.get(parent_model, target_id)
+    if parent is not None:
+        parent.likes_count = counts.get("like", 0)
+        parent.dislikes_count = counts.get("dislike", 0)
+        await session.commit()
+
     return counts
