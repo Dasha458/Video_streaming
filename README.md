@@ -80,9 +80,12 @@ docker exec vault vault operator init -key-shares=2 -key-threshold=2
 #     і перезапустити vault — vault/config/unseal.sh розпечатає його автоматично.
 docker compose up -d --force-recreate vault
 
-# 4.3 Записати секрети застосунку (значення мають збігатися з Docker/.env
+# 4.3 Увімкнути KV v2 на шляху secret/ (свіжий Vault його не має — лише dev-режим)
+#     і записати секрети застосунку (значення мають збігатися з Docker/.env
 #     там, де це ті самі облікові дані — БД, MinIO, Elasticsearch).
-docker exec -e VAULT_TOKEN=<root-token> vault sh -c '
+#     Після 4.2 контейнер уже має VAULT_TOKEN з .env, тому -e не потрібен.
+docker exec vault sh -c '
+  vault secrets enable -path=secret kv-v2
   vault kv put secret/database  POSTGRES_HOST=postgres POSTGRES_PORT=5432 POSTGRES_DB=<VIDEO_DB> POSTGRES_USER=<POSTGRES_USER> POSTGRES_PASSWORD=<POSTGRES_PASSWORD>
   vault kv put secret/s3        MINIO_ROOT_USER=<MINIO_ROOT_USER> MINIO_ROOT_PASSWORD=<MINIO_ROOT_PASSWORD> MINIO_ENDPOINT_URL=http://minio:9000 MINIO_REGION_NAME=us-east-1 BUCKET_NAMES=videos,video-thumbnails
   vault kv put secret/elastic   ELASTIC_HOST=http://elasticsearch:9200 ELASTIC_PASSWORD=<ELASTIC_PASSWORD>

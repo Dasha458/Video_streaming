@@ -96,7 +96,8 @@ services:
         tag: "{{.ImageName}}|{{.Name}}|{{.ImageFullID}}|{{.FullID}}"
 
   minio:
-    image: minio/minio:latest
+    # MinIO stopped publishing to Docker Hub; docker.io/minio/minio now 404s.
+    image: quay.io/minio/minio:latest
     container_name: minio_service
     expose:
       - "9000"
@@ -206,12 +207,18 @@ services:
 
   vault:
     image: hashicorp/vault:latest
+    # The image's default user is uid 100 (vault), which cannot chown a
+    # root-owned named volume -- so `chown && vault server` never started the
+    # server and the container crash-looped on Docker Desktop. Start as root
+    # only to fix ownership, then drop to `vault` for the server itself, the
+    # same way the image's own entrypoint does.
+    user: root
     command: >
       sh -c "
         chown -R vault:vault /opt/vault/data &&
-        vault server -config=/etc/vault/vault.hcl &
-        VAULT_PID=$$! &&
-        sh /etc/vault/unseal.sh &&
+        su-exec vault vault server -config=/etc/vault/vault.hcl &
+        VAULT_PID=$$! ;
+        sh /etc/vault/unseal.sh ;
         wait $$VAULT_PID
       "
     container_name: vault

@@ -1,0 +1,5 @@
+# Scripts and configs that run inside Linux containers must stay LF even
+# when checked out on Windows with core.autocrlf=true -- a CRLF unseal.sh
+# made the vault container crash-loop with "syntax error: expecting then".
+*.sh   text eol=lf
+*.hcl  text eol=lf
