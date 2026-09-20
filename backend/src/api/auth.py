@@ -1,20 +1,21 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from src.api.dependencies.services import get_auth_service, get_github_oauth_service
 from src.config import get_github_oauth_settings
 from src.infrastructure.auth import (
+    clear_access_cookie,
     current_active_user,
     current_superuser,
     fastapi_users,
     get_jwt_strategy,
+    set_access_cookie,
 )
 from src.models import User
 from src.schemas.user import (
     CheckUserRequest,
     CheckUserResponse,
     LoginRequest,
-    LoginResponse,
     PasswordChangeRequest,
     UserCreate,
     UserPublic,
@@ -52,20 +53,21 @@ router_auth.include_router(
 )
 
 
-@router_auth.post("/login", response_model=LoginResponse)
+@router_auth.post("/login", status_code=204, response_class=Response)
 async def login(
     data: LoginRequest,
     auth_service: AuthService = Depends(get_auth_service),
-) -> LoginResponse:
+) -> Response:
+    """Set the httpOnly session cookie; the token never reaches JavaScript."""
     user = await auth_service.login(data.email, data.password)
-    strategy = get_jwt_strategy()
-    token = await strategy.write_token(user)
-    return LoginResponse(token=token)
+    token = await get_jwt_strategy().write_token(user)
+    return set_access_cookie(Response(status_code=204), token)
 
 
-@router_auth.post("/logout")
-async def logout() -> dict:
-    return {"detail": "Logged out"}
+@router_auth.post("/logout", status_code=204, response_class=Response)
+async def logout() -> Response:
+    # Deliberately unauthenticated: an expired cookie must still be clearable.
+    return clear_access_cookie(Response(status_code=204))
 
 
 @router_auth.get("/me", response_model=UserPublic)
@@ -89,9 +91,7 @@ async def change_password(
     user: User = Depends(current_active_user),
     auth_service: AuthService = Depends(get_auth_service),
 ) -> None:
-    await auth_service.change_password(
-        user, data.current_password, data.new_password
-    )
+    await auth_service.change_password(user, data.current_password, data.new_password)
 
 
 @router_auth.get("/admin")
@@ -140,12 +140,15 @@ async def github_callback(
     state: str = Query(...),
     github_oauth_service: GitHubOAuthService = Depends(get_github_oauth_service),
 ) -> RedirectResponse:
-    """Exchange GitHub OAuth code for a JWT and redirect to the frontend."""
+    """Exchange the GitHub code for a session cookie and redirect to the frontend.
+
+    The token rides on the redirect as a Set-Cookie header, never in the URL --
+    a query-string token would land in browser history, server access logs
+    and any Referer header the callback page happens to emit.
+    """
     github_oauth_service.validate_state(state)
     user = await github_oauth_service.exchange_code_for_user(code)
+    token = await get_jwt_strategy().write_token(user)
 
-    strategy = get_jwt_strategy()
-    jwt_token = await strategy.write_token(user)
-
-    frontend_url = _github_settings.FRONTEND_URL
-    return RedirectResponse(url=f"{frontend_url}/auth/callback?token={jwt_token}")
+    response = RedirectResponse(url=f"{_github_settings.FRONTEND_URL}/auth/callback")
+    return set_access_cookie(response, token)

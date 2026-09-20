@@ -31,10 +31,6 @@ class LoginRequest(BaseModel):
     password: str
 
 
-class LoginResponse(BaseModel):
-    token: str
-
-
 class CheckUserRequest(BaseModel):
     username: str
     email: str

@@ -15,16 +15,12 @@ export const registerUser = (email: string, password: string): Promise<void> =>
     })
     .then(() => {});
 
-export const loginUser = (email: string, password: string): Promise<string> =>
-  clientApi
-    .post<{ token: string }>("/api/auth/login", { email, password })
-    .then((res) => {
-      localStorage.setItem("token", res.data.token);
-      return res.data.token;
-    });
+/** Resolves once the backend has set the httpOnly session cookie. */
+export const loginUser = (email: string, password: string): Promise<void> =>
+  clientApi.post("/api/auth/login", { email, password }).then(() => {});
 
+/** Asks the backend to clear the session cookie; the client can't do it itself. */
 export const logoutUser = async (): Promise<void> => {
-  localStorage.removeItem("token");
   try {
     await clientApi.post("/api/auth/logout");
   } catch (err) {

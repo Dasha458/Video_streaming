@@ -1,11 +1,11 @@
 import uuid
 from typing import AsyncGenerator, Optional
 
-from fastapi import Depends, Request
+from fastapi import Depends, Request, Response
 from fastapi_users import BaseUserManager, FastAPIUsers, UUIDIDMixin
 from fastapi_users.authentication import (
     AuthenticationBackend,
-    BearerTransport,
+    CookieTransport,
     JWTStrategy,
 )
 from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
@@ -70,16 +70,62 @@ async def get_user_manager(
     yield UserManager(user_db)
 
 
-bearer_transport = BearerTransport(tokenUrl="/api/auth/login")
+TOKEN_LIFETIME_SECONDS = 3600
+
+# The JWT travels only in an httpOnly cookie: JavaScript can't read it, so an
+# XSS foothold can't exfiltrate the session the way it could from localStorage.
+# SameSite=Lax keeps the cookie off cross-site POSTs (CSRF) while still sending
+# it on same-site requests -- which localhost:5173 -> localhost:8000 is, since
+# SameSite compares registrable domain, not port. `secure` follows the
+# deployment scheme: FRONTEND_URL is the one place that knows whether the
+# app is served over https.
+cookie_transport = CookieTransport(
+    cookie_name="access_token",
+    cookie_max_age=TOKEN_LIFETIME_SECONDS,
+    cookie_secure=_github_settings.FRONTEND_URL.startswith("https://"),
+    cookie_httponly=True,
+    cookie_samesite="lax",
+)
+
+
+def set_access_cookie(response: Response, token: str) -> Response:
+    """Attach the session cookie to any response (login, OAuth redirect)."""
+    response.set_cookie(
+        key=cookie_transport.cookie_name,
+        value=token,
+        max_age=cookie_transport.cookie_max_age,
+        path=cookie_transport.cookie_path,
+        domain=cookie_transport.cookie_domain,
+        secure=cookie_transport.cookie_secure,
+        httponly=cookie_transport.cookie_httponly,
+        samesite=cookie_transport.cookie_samesite,
+    )
+    return response
+
+
+def clear_access_cookie(response: Response) -> Response:
+    response.set_cookie(
+        key=cookie_transport.cookie_name,
+        value="",
+        max_age=0,
+        path=cookie_transport.cookie_path,
+        domain=cookie_transport.cookie_domain,
+        secure=cookie_transport.cookie_secure,
+        httponly=cookie_transport.cookie_httponly,
+        samesite=cookie_transport.cookie_samesite,
+    )
+    return response
 
 
 def get_jwt_strategy() -> JWTStrategy:
-    return JWTStrategy(secret=jwt_settings.JWT_SECRET, lifetime_seconds=3600)
+    return JWTStrategy(
+        secret=jwt_settings.JWT_SECRET, lifetime_seconds=TOKEN_LIFETIME_SECONDS
+    )
 
 
 auth_backend = AuthenticationBackend(
     name="jwt",
-    transport=bearer_transport,
+    transport=cookie_transport,
     get_strategy=get_jwt_strategy,
 )
 

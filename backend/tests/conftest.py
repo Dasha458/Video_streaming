@@ -5,6 +5,7 @@ CRITICAL: The pytest_configure hook runs before any test modules are imported,
 which is required because database.py, messaging/client.py, elasticsearch.py,
 and infrastructure/auth.py all execute Vault-dependent code at module level.
 """
+
 import sys
 import types
 import uuid
@@ -73,8 +74,8 @@ def pytest_configure(config: pytest.Config) -> None:  # noqa: D401
     mock_module = types.ModuleType("src.infrastructure.vault")
 
     mock_client_instance = MagicMock()
-    mock_client_instance.read_secret.side_effect = lambda path, mount_point="secret": _SECRETS_BY_PATH.get(
-        path, {}
+    mock_client_instance.read_secret.side_effect = (
+        lambda path, mount_point="secret": _SECRETS_BY_PATH.get(path, {})
     )
 
     mock_client_cls = MagicMock(return_value=mock_client_instance)
@@ -151,7 +152,11 @@ def mock_es_client() -> AsyncMock:
     es_suggest_result = {
         "suggest": {
             "video-suggest": [
-                {"options": [{"text": "test video", "_source": {"title": "test video"}}]}
+                {
+                    "options": [
+                        {"text": "test video", "_source": {"title": "test video"}}
+                    ]
+                }
             ]
         }
     }
@@ -193,7 +198,13 @@ def mock_user() -> MagicMock:
 # 5. App and client fixtures
 # ─────────────────────────────────────────────────────────────────────────────
 @pytest.fixture(scope="session")
-def app(mock_s3_client: AsyncMock, mock_rabbit_broker: MagicMock, mock_es_client: AsyncMock, mock_redis: AsyncMock, mock_user: MagicMock):  # noqa: E501
+def app(
+    mock_s3_client: AsyncMock,
+    mock_rabbit_broker: MagicMock,
+    mock_es_client: AsyncMock,
+    mock_redis: AsyncMock,
+    mock_user: MagicMock,
+):  # noqa: E501
     from main import create_app
     from src.infrastructure import (
         get_async_session,
@@ -231,8 +242,17 @@ def app(mock_s3_client: AsyncMock, mock_rabbit_broker: MagicMock, mock_es_client
 
 
 @pytest.fixture(scope="session")
-def client(app) -> TestClient:
+def _shared_client(app) -> TestClient:
     return TestClient(app, raise_server_exceptions=False)
+
+
+@pytest.fixture
+def client(_shared_client: TestClient) -> TestClient:
+    # One TestClient for the whole session (cheap), but a clean cookie jar per
+    # test: login sets the httpOnly session cookie, and without this every
+    # later "unauthenticated" test would silently send it.
+    _shared_client.cookies.clear()
+    return _shared_client
 
 
 @pytest.fixture(scope="session")
