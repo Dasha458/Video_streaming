@@ -12,7 +12,9 @@ detect-changes:
     - |
       # SERVICE:path pairs. SERVICE must match the `deploy` job's matrix
       # names below; path is the repo prefix that job actually builds from.
-      for PAIR in backend:backend convertor:services/convertor moderation:services/moderation frontend:frontend; do
+      # services/moderation is deliberately absent: it is a stub with no
+      # Dockerfile, so `docker build` on it can only fail. Re-add once real.
+      for PAIR in backend:backend convertor:services/convertor frontend:frontend; do
         SERVICE="${PAIR%%:*}"
         PATH_PREFIX="${PAIR#*:}"
         if git diff --name-only $CI_COMMIT_BEFORE_SHA $CI_COMMIT_SHA | grep -q "^$PATH_PREFIX/"; then
@@ -38,7 +40,6 @@ deploy:
     matrix:
       - SERVICE: backend
       - SERVICE: convertor
-      - SERVICE: moderation
       - SERVICE: frontend
   script:
     - docker login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
@@ -51,8 +52,6 @@ deploy:
         PATH_TO_SERVICE="./frontend"
       elif [ "$SERVICE" = "convertor" ]; then
         PATH_TO_SERVICE="./services/convertor"
-      elif [ "$SERVICE" = "moderation" ]; then
-        PATH_TO_SERVICE="./services/moderation"
       else
         PATH_TO_SERVICE="./backend"
       fi
