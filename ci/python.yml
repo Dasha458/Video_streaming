@@ -4,7 +4,9 @@
     matrix:
       - SERVICE: backend
       - SERVICE: services/convertor
-      - SERVICE: services/moderation
+      # services/moderation is a stub (print + one import test); not worth a
+      # lint/test matrix slot until it has real code. Re-add together with
+      # its deploy entry in ci/deploy.yml.
   variables:
     PIP_CACHE_DIR: "$CI_PROJECT_DIR/.cache/pip/$SERVICE"
     UV_CACHE_DIR: "$CI_PROJECT_DIR/.cache/uv/$SERVICE"
