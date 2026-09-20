@@ -1,6 +1,6 @@
 """
 Seed script: creates a demo user, channel, 3 videos + realistic analytics data.
-Run: python seed_analytics.py
+Run (from backend/): python -m utils.seed_analytics
 Requires: psycopg2-binary or psycopg2
 """
 
