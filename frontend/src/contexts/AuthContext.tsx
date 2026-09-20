@@ -21,7 +21,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  refreshUser: () => Promise<void>;
+  refreshUser: () => Promise<UserInfo | null>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -30,19 +30,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const refreshUser = useCallback(async () => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      setUser(null);
-      setIsLoading(false);
-      return;
-    }
+  // The session cookie is httpOnly, so the only way to know whether we're
+  // logged in is to ask the backend; a 401 here simply means "no session".
+  const refreshUser = useCallback(async (): Promise<UserInfo | null> => {
     try {
       const userData = await getCurrentUser();
       setUser(userData);
+      return userData;
     } catch {
-      localStorage.removeItem("token");
       setUser(null);
+      return null;
     } finally {
       setIsLoading(false);
     }
@@ -63,7 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = useCallback(
     async (email: string, password: string) => {
       await apiRegister(email, password);
-      await apiLogin(email, password); // auto-login: stores token in localStorage
+      await apiLogin(email, password); // auto-login: backend sets the session cookie
       await refreshUser();
     },
     [refreshUser],

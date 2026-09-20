@@ -1,10 +1,8 @@
 """Tests for /api/auth/* endpoints."""
-import uuid
+
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
-from tests.conftest import TEST_USER_EMAIL, TEST_USER_ID, TEST_USER_USERNAME
+from tests.conftest import TEST_USER_EMAIL, TEST_USER_USERNAME
 
 
 class TestRegisterEndpoint:
@@ -45,7 +43,9 @@ class TestRegisterEndpoint:
         from fastapi import HTTPException
 
         mock_manager.create = AsyncMock(
-            side_effect=HTTPException(status_code=400, detail="REGISTER_USER_ALREADY_EXISTS")
+            side_effect=HTTPException(
+                status_code=400, detail="REGISTER_USER_ALREADY_EXISTS"
+            )
         )
         app.dependency_overrides[get_user_manager] = lambda: mock_manager
         try:
@@ -106,7 +106,9 @@ class TestLoginEndpoint:
         finally:
             app.dependency_overrides.pop(get_user_manager, None)
 
-    def test_valid_credentials_returns_token(self, client, app, mock_user):
+    def test_valid_credentials_set_httponly_cookie_not_body(
+        self, client, app, mock_user
+    ):
         from src.infrastructure.auth import get_user_manager
 
         mock_manager = AsyncMock()
@@ -117,13 +119,33 @@ class TestLoginEndpoint:
                 "/api/auth/login",
                 json={"email": TEST_USER_EMAIL, "password": "correctpassword"},
             )
-            assert response.status_code == 200
-            body = response.json()
-            assert "token" in body
-            assert isinstance(body["token"], str)
-            assert len(body["token"]) > 20
+            assert response.status_code == 204
+            assert response.content == b""  # token must never be in the body
+            set_cookie = response.headers["set-cookie"]
+            assert set_cookie.startswith("access_token=")
+            assert "HttpOnly" in set_cookie
+            assert "SameSite=lax" in set_cookie
+            assert len(response.cookies["access_token"]) > 20
         finally:
             app.dependency_overrides.pop(get_user_manager, None)
+
+
+class TestLogoutEndpoint:
+    """POST /api/auth/logout — must clear the cookie even without a valid session."""
+
+    def test_clears_cookie_unauthenticated(self, client, app):
+        from src.infrastructure.auth import current_active_user
+
+        original = app.dependency_overrides.pop(current_active_user, None)
+        try:
+            response = client.post("/api/auth/logout")
+            assert response.status_code == 204
+            set_cookie = response.headers["set-cookie"]
+            assert set_cookie.startswith('access_token=""')
+            assert "Max-Age=0" in set_cookie
+        finally:
+            if original is not None:
+                app.dependency_overrides[current_active_user] = original
 
 
 class TestGetMeEndpoint:
@@ -146,18 +168,6 @@ class TestGetMeEndpoint:
         finally:
             if original is not None:
                 app.dependency_overrides[current_active_user] = original
-
-
-class TestLogoutEndpoint:
-    """POST /api/auth/logout — stateless, always 200."""
-
-    def test_logout_returns_200(self, client):
-        response = client.post("/api/auth/logout")
-        assert response.status_code == 200
-
-    def test_logout_returns_detail(self, client):
-        body = client.post("/api/auth/logout").json()
-        assert body == {"detail": "Logged out"}
 
 
 class TestCheckUserEndpoint:
@@ -312,3 +322,28 @@ class TestGitHubCallbackEndpoint:
             params={"state": "somestate"},
         )
         assert response.status_code == 400  # app maps ValidationError → 400
+
+    def test_success_sets_cookie_and_keeps_token_out_of_the_url(
+        self, client, app, mock_user
+    ):
+        from src.api.dependencies.services import get_github_oauth_service
+
+        mock_service = AsyncMock()
+        mock_service.validate_state = lambda state: None
+        mock_service.exchange_code_for_user = AsyncMock(return_value=mock_user)
+        app.dependency_overrides[get_github_oauth_service] = lambda: mock_service
+        try:
+            response = client.get(
+                "/api/auth/github/callback",
+                params={"code": "ok", "state": "ok"},
+                follow_redirects=False,
+            )
+            assert response.status_code == 307
+            location = response.headers["location"]
+            assert location.endswith("/auth/callback")
+            assert "token=" not in location
+            set_cookie = response.headers["set-cookie"]
+            assert set_cookie.startswith("access_token=")
+            assert "HttpOnly" in set_cookie
+        finally:
+            app.dependency_overrides.pop(get_github_oauth_service, None)

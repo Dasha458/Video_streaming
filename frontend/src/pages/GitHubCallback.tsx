@@ -1,10 +1,14 @@
 import { useEffect, useRef } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/components/ui/toast/use-toast";
 
+/**
+ * Landing page for the GitHub OAuth redirect. The backend has already set the
+ * httpOnly session cookie on that redirect, so there is nothing to read from
+ * the URL -- we just ask the backend who we are.
+ */
 export default function GitHubCallback() {
-    const [searchParams] = useSearchParams();
     const navigate = useNavigate();
     const { refreshUser } = useAuth();
     const handled = useRef(false);
@@ -13,17 +17,14 @@ export default function GitHubCallback() {
         if (handled.current) return;
         handled.current = true;
 
-        const token = searchParams.get("token");
-        if (!token) {
-            toast({ title: "GitHub login failed: no token received", variant: "destructive" });
-            navigate("/login", { replace: true });
-            return;
-        }
-
-        localStorage.setItem("token", token);
-        refreshUser().then(() => {
-            toast({ title: "Logged in with GitHub" });
-            navigate("/", { replace: true });
+        refreshUser().then((user) => {
+            if (user) {
+                toast({ title: "Logged in with GitHub" });
+                navigate("/", { replace: true });
+            } else {
+                toast({ title: "GitHub login failed", variant: "destructive" });
+                navigate("/login", { replace: true });
+            }
         });
     }, []);
 

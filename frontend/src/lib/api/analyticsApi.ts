@@ -188,19 +188,13 @@ export const sendWatchSession = (
     .post<WatchSessionAck>("/api/analytics/watch-session", ping)
     .then((r) => r.data);
 
-/** Fire-and-forget final ping on tab close using sendBeacon. */
+/**
+ * Fire-and-forget final ping on tab close. sendBeacon can't carry custom
+ * headers but does send same-origin cookies, so with the httpOnly session
+ * cookie this ping is authenticated -- it was anonymous under Bearer auth.
+ */
 export const beaconWatchSession = (ping: WatchSessionPing): boolean => {
   try {
-    const token = localStorage.getItem("token");
-    // sendBeacon does not honour custom headers → fall back to fetch with keepalive
-    // when we need the Bearer header.
-    if (token) {
-      return navigator
-        .sendBeacon(
-          "/api/analytics/watch-session",
-          new Blob([JSON.stringify(ping)], { type: "application/json" }),
-        );
-    }
     return navigator.sendBeacon(
       "/api/analytics/watch-session",
       new Blob([JSON.stringify(ping)], { type: "application/json" }),
