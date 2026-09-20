@@ -216,3 +216,8 @@ node_modules/
 
 # Helm dependency cache (video-streaming/ is the Helm chart directory)
 video-streaming/charts/
+
+# Local-only seeding tooling: machine-specific paths and test-account
+# credentials. Must never land in git via a broad `git add`.
+/scripts/
+/seed_analytics.sql
