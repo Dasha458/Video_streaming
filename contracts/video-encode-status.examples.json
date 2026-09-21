@@ -1,0 +1,14 @@
+[
+  { "video_id": "1b4e28ba-2fa1-11d2-883f-0016d3cca427", "status": "processing" },
+  {
+    "video_id": "1b4e28ba-2fa1-11d2-883f-0016d3cca427",
+    "status": "ready",
+    "resolutions": [
+      { "height": 360, "width": 640, "bitrate": 800, "playlist_path": "1b4e28ba-2fa1-11d2-883f-0016d3cca427/stream_360p/playlist.m3u8" },
+      { "height": 720, "width": 1280, "bitrate": 2000, "playlist_path": "1b4e28ba-2fa1-11d2-883f-0016d3cca427/stream_720p/playlist.m3u8" },
+      { "height": 1080, "width": 1920, "bitrate": 5000, "playlist_path": "1b4e28ba-2fa1-11d2-883f-0016d3cca427/stream_1080p/playlist.m3u8" }
+    ],
+    "video_path": "minio/videos/1b4e28ba-2fa1-11d2-883f-0016d3cca427/master.m3u8"
+  },
+  { "video_id": "1b4e28ba-2fa1-11d2-883f-0016d3cca427", "status": "failed" }
+]

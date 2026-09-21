@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Optional
 
-from elasticsearch import AsyncElasticsearch
+from elastic_transport import TransportError
+from elasticsearch import ApiError, AsyncElasticsearch
 
 from src.errors.search import VideoHintsError, VideoSearchError
 
@@ -39,8 +40,8 @@ class SearchService:
             ]
             return [h for h in hints if h]
 
-        except Exception as ex:
-            raise VideoHintsError(query=query, cause=ex)
+        except (ApiError, TransportError) as ex:
+            raise VideoHintsError(query=query, cause=ex) from ex
 
     async def search_video(
         self,
@@ -118,5 +119,5 @@ class SearchService:
                 ],
                 "total": self._total_hits(result),
             }
-        except Exception as ex:
-            raise VideoSearchError(query=query, cause=ex)
+        except (ApiError, TransportError) as ex:
+            raise VideoSearchError(query=query, cause=ex) from ex
