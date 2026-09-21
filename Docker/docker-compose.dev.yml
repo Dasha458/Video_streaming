@@ -1,0 +1,18 @@
+# Development-only additions on top of docker-compose.yml.
+#
+# Activated by COMPOSE_FILE=docker-compose.yml:docker-compose.dev.yml in
+# Docker/.env (see .env.example). Without that line `docker compose up`
+# runs the production layout, where none of the routes below exist.
+#
+# What it does: publishes the operational UIs on the gateway --
+#   /docs, /openapi.json   Swagger
+#   /minio/ui/, /minio/    MinIO console + S3 API
+#   /rabbitmq/             RabbitMQ management
+#   /grafana/, /prometheus/
+#   /ui/, /v1/             Vault UI and HTTP API
+# Every one of these is an admin surface; in production they are reachable
+# only from inside the Docker network.
+services:
+  nginx:
+    volumes:
+      - ../gateway/dev-admin-locations.conf:/etc/nginx/dev-locations/admin.conf:ro
