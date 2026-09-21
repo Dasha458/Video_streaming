@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING, Optional
 from uuid import NAMESPACE_DNS, UUID, uuid4, uuid5
 
 import xxhash
+from aio_pika.exceptions import AMQPException
+from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import UploadFile
 from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
@@ -197,12 +199,14 @@ class FileService:
                 queue="video.encode",
                 priority=10,
             )
-        except Exception as e:
+        except (RuntimeError, AMQPException, OSError) as e:
+            # Compensate: a video row with no encode job would sit in "queued"
+            # forever, so the upload is rolled back whatever the cause.
             logging.error(f"Upload pipeline failed for {video_id}: {e}")
 
             await self.session.execute(delete(Video).where(Video.id == video_id))
             await self.session.commit()
-            raise JobPublishFailedError()
+            raise JobPublishFailedError() from e
 
         return FileResponse(
             status="accepted",
@@ -261,9 +265,9 @@ class FileService:
             return self.s3_client.download_file(
                 object_key, chunk_size, bucket_name=bucket_name
             )
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             logging.error(f"S3 streaming error for {object_key}: {e}")
-            raise S3DownloadError(object_key)
+            raise S3DownloadError(object_key) from e
 
     async def delete_video(self, video_id, user_id):
         # Fetch video & check ownership
@@ -293,10 +297,10 @@ class FileService:
                 await self.s3_client.delete_file(
                     thumbnail_path.split("/")[-1], bucket_name="video-thumbnails"
                 )
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             logging.warning(f"S3 deletion failed for {video_id}: {e}")
             await self.session.rollback()
-            raise S3DeletionError()
+            raise S3DeletionError() from e
 
         # Delete DB record
         await self.session.delete(video)

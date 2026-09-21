@@ -189,20 +189,7 @@ class AnalyticsService:
             .join(ReactionType, VideoReaction.reaction_type_id == ReactionType.id)
             .where(Video.channel_id == channel_id, ReactionType.name == reaction_name)
         )
-        try:
-            return await self._scalar_count(
-                stmt, VideoReaction.created_at, since, until
-            )
-        except Exception:
-            # Fallback: VideoReaction may lack created_at in some deployments —
-            # in that case we simply return the lifetime counter.
-            fallback = (
-                select(func.coalesce(func.sum(Video.likes_count), 0))
-                if reaction_name == "like"
-                else select(func.coalesce(func.sum(Video.dislikes_count), 0))
-            )
-            fallback = fallback.where(Video.channel_id == channel_id)
-            return int((await self.session.execute(fallback)).scalar() or 0)
+        return await self._scalar_count(stmt, VideoReaction.created_at, since, until)
 
     async def _count_comments(
         self,
@@ -228,7 +215,9 @@ class AnalyticsService:
             .join(Video, VideoWatchSession.video_id == Video.id)
             .where(Video.channel_id == channel_id)
         )
-        return await self._scalar_count(stmt, VideoWatchSession.started_at, since, until)
+        return await self._scalar_count(
+            stmt, VideoWatchSession.started_at, since, until
+        )
 
     # ---------- OVERVIEW -------------------------------------------------
 
@@ -639,16 +628,11 @@ class AnalyticsService:
         base = (
             select(func.count(VideoReaction.id))
             .join(ReactionType, VideoReaction.reaction_type_id == ReactionType.id)
-            .where(VideoReaction.video_id == video_id, ReactionType.name == reaction_name)
-        )
-        try:
-            return await self._scalar_count(
-                base, VideoReaction.created_at, since, until
+            .where(
+                VideoReaction.video_id == video_id, ReactionType.name == reaction_name
             )
-        except Exception:
-            # created_at may be absent on VideoReaction in some deployments —
-            # fall back to the lifetime count for this reaction on this video.
-            return int((await self.session.execute(base)).scalar() or 0)
+        )
+        return await self._scalar_count(base, VideoReaction.created_at, since, until)
 
     async def _video_views_per_day(
         self, video_id: UUID, since: datetime | None

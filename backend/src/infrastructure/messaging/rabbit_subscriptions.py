@@ -8,6 +8,7 @@ from faststream.rabbit.fastapi import RabbitRouter
 from faststream.rabbit.schemas.constants import ExchangeType
 from faststream.rabbit.schemas.queue import ClassicQueueArgs
 from sqlalchemy import insert, select, update
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import joinedload
 
 from src.config import get_rabbitmq_settings
@@ -71,6 +72,7 @@ video_status_dlq_queue = RabbitQueue(
     durable=True,
     routing_key="video.encode.status.dlq",
 )
+
 
 @rabbit_router.subscriber(
     queue=video_status_queue,
@@ -161,21 +163,31 @@ async def status_handler(
         ).model_dump()
         background_tasks.add_task(index_video_in_es, video_doc, es)
 
-    except Exception as e:
+    except (UnknownEncoderStatusError, VideoNotFoundError):
+        # Permanent: the message itself is wrong (status we don't know, or
+        # a video that doesn't exist). Retrying cannot fix it -- straight to
+        # the DLQ, and the typed error propagates so the cause is visible.
+        logging.error(
+            f"Rejecting encoder status for video {msg.video_id}", exc_info=True
+        )
+        await session.rollback()
+        await broker.publish(msg.model_dump(), queue="video.encode.status.dlq.queue")
+        raise
+
+    except (SQLAlchemyError, OSError) as e:
+        # Transient: database or broker hiccup. Retry a few times, then DLQ.
         logging.error(
             f"Error in status_handler for video {msg.video_id}: {e}", exc_info=True
         )
         await session.rollback()
 
-        retries = getattr(msg, "retries", 0)
-
-        if retries < 3:
+        if msg.retries < 3:
             await broker.publish(
-                {**msg.model_dump(), "retries": retries + 1},
+                {**msg.model_dump(), "retries": msg.retries + 1},
                 queue="video.encode.status.retry.queue",
             )
         else:
             await broker.publish(
                 msg.model_dump(), queue="video.encode.status.dlq.queue"
             )
-        raise VideoEncodingPersistenceError()
+        raise VideoEncodingPersistenceError() from e

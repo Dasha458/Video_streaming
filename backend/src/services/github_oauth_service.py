@@ -4,6 +4,7 @@ import bcrypt
 import httpx
 import jwt as pyjwt
 from httpx_oauth.clients.github import GitHubOAuth2
+from httpx_oauth.oauth2 import GetAccessTokenError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -90,7 +91,7 @@ class GitHubOAuthService:
                 code=code,
                 redirect_uri=self.github_settings.GITHUB_CALLBACK_URL,
             )
-        except Exception as e:
+        except (GetAccessTokenError, httpx.HTTPError) as e:
             raise GitHubCodeExchangeError() from e
 
         access_token = token_data["access_token"]

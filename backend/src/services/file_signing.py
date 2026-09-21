@@ -2,6 +2,8 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
+from botocore.exceptions import BotoCoreError, ClientError
+
 from src.errors.files import (
     FileNotFoundS3Error,
     InvalidFilePathError,
@@ -34,9 +36,9 @@ class FileSigningService:
                 expires_in=self.expires_in,
                 bucket_name=bucket,
             )
-        except Exception as e:
+        except (BotoCoreError, ClientError) as e:
             logging.error("Error generating presigned URL: %s", e, stack_info=True)
-            raise SignedUrlGenerationError()
+            raise SignedUrlGenerationError() from e
 
         if not signed_url:
             raise FileNotFoundS3Error()
