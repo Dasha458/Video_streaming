@@ -1,5 +1,4 @@
 import logging
-import os
 from pathlib import Path
 
 from faststream.asgi import AsgiFastStream
@@ -8,6 +7,7 @@ from prometheus_client import CollectorRegistry, make_asgi_app
 
 from src.config import get_rabbitmq_settings
 from src.exceptions import AppError, FFmpegExecutionError, InvalidMediaError
+from src.renditions import LADDER
 from src.s3_client import get_s3_client
 from src.services import (
     check_liveness,
@@ -85,22 +85,14 @@ async def encode_video(filename: str) -> None:
 
         await s3_client.upload_dir(video_id, base_dir, bucket_name="videos")
 
-        resolutions = []
-        for subdir in os.listdir(base_dir):
-            if subdir.startswith("stream_"):
-                height = int(subdir.replace("stream_", "").replace("p", ""))
-                resolutions.append(
-                    {
-                        "height": height,
-                        "width": (
-                            1920 if height == 1080 else 1280 if height == 720 else 854
-                        ),
-                        "bitrate": (
-                            4500 if height == 1080 else 2500 if height == 720 else 1200
-                        ),
-                        "playlist_path": f"{video_id}/{subdir}/playlist.m3u8",
-                    }
-                )
+        # Report exactly the renditions ffmpeg wrote, described by the same
+        # ladder that drove the encode -- the numbers used to be retyped here
+        # and disagreed with the encoder (854x360 @ 1200k vs 640x360 @ 800k).
+        resolutions = [
+            rendition.as_message(video_id)
+            for rendition in LADDER
+            if (base_dir / f"stream_{rendition.name}" / "playlist.m3u8").exists()
+        ]
 
         await broker.publish(
             {

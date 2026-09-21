@@ -13,6 +13,7 @@ from .exceptions import (
     FFProbeError,
     InvalidMediaError,
 )
+from .renditions import LADDER, Rendition
 from .schemas import VideoProperties
 
 LOCAL_BASE = Path("/tmp/processing")
@@ -79,6 +80,54 @@ def has_gpu() -> bool:
         return False
 
 
+def _filter_complex(ladder: tuple[Rendition, ...], use_gpu: bool) -> str:
+    """One split into N branches, each scaled to a rendition. The CPU path
+    pads to even dimensions because libx264 rejects odd sizes; scale_npp
+    on the GPU path handles that itself."""
+    n = len(ladder)
+    branches = "".join(f"[v{i + 1}]" for i in range(n))
+    parts = [f"[0:v]split={n}{branches}"]
+    for i, r in enumerate(ladder):
+        scale = "scale_npp" if use_gpu else "scale"
+        chain = (
+            f"[v{i + 1}]{scale}=w={r.width}:h={r.height}"
+            ":force_original_aspect_ratio=decrease"
+        )
+        if not use_gpu:
+            chain += ",pad=ceil(iw/2)*2:ceil(ih/2)*2"
+        parts.append(f"{chain}[{r.label}]")
+    return ";".join(parts)
+
+
+def _codec_args(index: int, r: Rendition, vcodec: str) -> list[str]:
+    i = str(index)
+    return [
+        "-map",
+        f"[{r.label}]",
+        "-map",
+        "a:0?",
+        f"-c:v:{i}",
+        vcodec,
+        f"-b:v:{i}",
+        f"{r.video_kbps}k",
+        f"-maxrate:v:{i}",
+        f"{r.video_kbps}k",
+        f"-bufsize:v:{i}",
+        f"{r.bufsize_kbps}k",
+        f"-c:a:{i}",
+        "aac",
+        f"-b:a:{i}",
+        f"{r.audio_kbps}k",
+    ]
+
+
+def _var_stream_map(ladder: tuple[Rendition, ...], has_audio: bool) -> str:
+    return " ".join(
+        f"v:{i},a:{i},name:{r.name}" if has_audio else f"v:{i},name:{r.name}"
+        for i, r in enumerate(ladder)
+    )
+
+
 async def stream_ffmpeg(
     url: str,
     output_dir: Path,
@@ -116,101 +165,17 @@ async def stream_ffmpeg(
     cmd += ["-i", url]
 
     # ---------- Filter & scaling ----------
-    if use_gpu:
-        filter_complex = (
-            "[0:v]split=3[v1][v2][v3];"
-            "[v1]scale_npp=w=640:h=360:force_original_aspect_ratio=decrease[v360];"
-            "[v2]scale_npp=w=1280:h=720:force_original_aspect_ratio=decrease[v720];"
-            "[v3]scale_npp=w=1920:h=1080:force_original_aspect_ratio=decrease[v1080]"
-        )
-    else:
-        filter_complex = (
-            "[0:v]split=3[v1][v2][v3];"
-            "[v1]scale=w=640:h=360:force_original_aspect_ratio=decrease,"
-            "pad=ceil(iw/2)*2:ceil(ih/2)*2[v360];"
-            "[v2]scale=w=1280:h=720:force_original_aspect_ratio=decrease,"
-            "pad=ceil(iw/2)*2:ceil(ih/2)*2[v720];"
-            "[v3]scale=w=1920:h=1080:force_original_aspect_ratio=decrease,"
-            "pad=ceil(iw/2)*2:ceil(ih/2)*2[v1080]"
-        )
-    cmd += ["-filter_complex", filter_complex]
-    if has_audio:
-        var_stream_map = "v:0,a:0,name:360p v:1,a:1,name:720p v:2,a:2,name:1080p"
-    else:
-        var_stream_map = "v:0,name:360p v:1,name:720p v:2,name:1080p"
+    cmd += ["-filter_complex", _filter_complex(LADDER, use_gpu)]
+
     # ---------- Codec setup ----------
     vcodec = "h264_nvenc" if use_gpu else "libx264"
-
-    cmd += [
-        # 360p
-        "-map",
-        "[v360]",
-        "-map",
-        "a:0?",
-        "-c:v:0",
-        vcodec,
-        "-b:v:0",
-        "800k",
-        "-maxrate:v:0",
-        "800k",
-        "-bufsize:v:0",
-        "1200k",
-        "-c:a:0",
-        "aac",
-        "-b:a:0",
-        "96k",
-        # 720p
-        "-map",
-        "[v720]",
-        "-map",
-        "a:0?",
-        "-c:v:1",
-        vcodec,
-        "-b:v:1",
-        "2000k",
-        "-maxrate:v:1",
-        "2000k",
-        "-bufsize:v:1",
-        "3000k",
-        "-c:a:1",
-        "aac",
-        "-b:a:1",
-        "128k",
-        # 1080p
-        "-map",
-        "[v1080]",
-        "-map",
-        "a:0?",
-        "-c:v:2",
-        vcodec,
-        "-b:v:2",
-        "5000k",
-        "-maxrate:v:2",
-        "5000k",
-        "-bufsize:v:2",
-        "7500k",
-        "-c:a:2",
-        "aac",
-        "-b:a:2",
-        "192k",
-    ]
+    for index, rendition in enumerate(LADDER):
+        cmd += _codec_args(index, rendition, vcodec)
 
     # ---------- Preset / Rate control ----------
     if use_gpu:
-        cmd += [
-            "-rc:v:0",
-            "vbr",
-            "-rc:v:1",
-            "vbr",
-            "-rc:v:2",
-            "vbr",
-            "-preset:v:0",
-            "p4",
-            "-preset:v:1",
-            "p4",
-            "-preset:v:2",
-            "p4",
-        ]
+        for i in range(len(LADDER)):
+            cmd += [f"-rc:v:{i}", "vbr", f"-preset:v:{i}", "p4"]
     else:
         cmd += ["-preset", "veryfast", "-tune", "zerolatency"]
 
@@ -235,7 +200,7 @@ async def stream_ffmpeg(
         "-master_pl_name",
         "master.m3u8",
         "-var_stream_map",
-        var_stream_map,
+        _var_stream_map(LADDER, has_audio),
         out_playlist,
     ]
     try:
