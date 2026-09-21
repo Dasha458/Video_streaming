@@ -137,13 +137,23 @@ curl http://localhost/api/health/ready
 
 ## Доступ до сервісів
 
-| Сервіс | URL |
-|--------|-----|
-| Головна сторінка | http://localhost |
-| API документація | http://localhost/api/docs |
-| Grafana | http://localhost/grafana (admin / admin) |
-| MinIO Console | http://localhost/minio/ui |
-| RabbitMQ | http://localhost/rabbitmq |
+| Сервіс | URL | Профіль |
+|--------|-----|---------|
+| Головна сторінка | http://localhost | завжди |
+| API (JSON) | http://localhost/api/… | завжди |
+| Swagger | http://localhost/docs | **dev** |
+| Grafana | http://localhost/grafana (admin / admin) | **dev** |
+| Prometheus | http://localhost/prometheus | **dev** |
+| MinIO Console | http://localhost/minio/ui | **dev** |
+| RabbitMQ management | http://localhost/rabbitmq | **dev** |
+| Vault UI / API | http://localhost/ui, http://localhost/v1 | **dev** |
+
+Рядки з профілем **dev** існують на шлюзі лише коли в `Docker/.env` є
+`COMPOSE_PATH_SEPARATOR=:` + `COMPOSE_FILE=docker-compose.yml:docker-compose.dev.yml`
+(як у `.env.example`; роздільник заданий явно, бо на Windows типово `;`).
+Це підключає `docker-compose.dev.yml`, який монтує `gateway/dev-admin-locations.conf`
+в nginx. У продакшн-конфігурації (`docker-compose.yml` сам) цих роутів немає взагалі —
+адмін-інтерфейси доступні лише зсередини Docker-мережі.
 
 ---
 
@@ -155,7 +165,8 @@ Video_streaming/
 ├── .pre-commit-config.yaml  # gitleaks, detect-private-key, лінтери
 ├── ci/                      # GitLab CI jobs: python, node, security, deploy (build+Trivy+push), auto-pr
 ├── Docker/
-│   ├── docker-compose.yml   # 14 сервісів локального стеку
+│   ├── docker-compose.yml   # 14 сервісів; продакшн-розкладка (без адмін-роутів на шлюзі)
+│   ├── docker-compose.dev.yml # dev-профіль: додає адмін-UI на шлюз (через COMPOSE_FILE у .env)
 │   ├── .env.example         # Шаблон інфраструктурних змінних (копіювати в .env)
 │   └── postgres/            # Dockerfile + init-скрипт створення БД
 ├── backend/                 # FastAPI BFF (Python 3.12, uv)
@@ -179,7 +190,9 @@ Video_streaming/
 │   ├── convertor/           # FFmpeg мікросервіс транскодування (RabbitMQ-консюмер)
 │   └── moderation/          # НЕ РЕАЛІЗОВАНО: заглушка без Dockerfile, не в compose
 ├── gateway/
-│   └── nginx.conf           # Reverse proxy + маршрутизація (лише HTTP, без TLS)
+│   ├── nginx.conf           # Прод: SPA, /api (rate limit), підписані /minio/<bucket>; лише HTTP, без TLS
+│   ├── security-headers.conf # CSP/HSTS/nosniff… (include)
+│   └── dev-admin-locations.conf # DEV ONLY: Swagger, MinIO/RabbitMQ/Grafana/Prometheus/Vault UI+API
 ├── monitoring/              # Prometheus, Grafana, Loki, Promtail конфіги
 ├── vault/
 │   └── config/              # vault.hcl (TLS наразі вимкнено) + unseal.sh (авто-розпечатування)
