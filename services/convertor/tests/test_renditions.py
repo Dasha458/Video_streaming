@@ -62,7 +62,7 @@ def test_published_metadata_matches_what_ffmpeg_encodes():
     """Before the ladder existed, main.py published 854x360 @ 1200k,
     1280x720 @ 2500k and 1920x1080 @ 4500k while ffmpeg encoded 640x360 @
     800k, 1280x720 @ 2000k and 1920x1080 @ 5000k. Now there is one source."""
-    msgs = [r.as_message("vid") for r in LADDER]
+    msgs = [r.as_message("vid").model_dump() for r in LADDER]
     assert msgs == [
         {
             "height": 360,

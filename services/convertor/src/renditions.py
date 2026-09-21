@@ -7,6 +7,8 @@ derived from LADDER, so they cannot disagree with each other.
 
 from dataclasses import dataclass
 
+from .messages import ResolutionMeta
+
 
 @dataclass(frozen=True)
 class Rendition:
@@ -33,14 +35,13 @@ class Rendition:
     def playlist_path(self, video_id: str) -> str:
         return f"{video_id}/stream_{self.name}/playlist.m3u8"
 
-    def as_message(self, video_id: str) -> dict:
-        """Shape consumed by the backend's ResolutionMeta (bitrate in kbps)."""
-        return {
-            "height": self.height,
-            "width": self.width,
-            "bitrate": self.video_kbps,
-            "playlist_path": self.playlist_path(video_id),
-        }
+    def as_message(self, video_id: str) -> ResolutionMeta:
+        return ResolutionMeta(
+            height=self.height,
+            width=self.width,
+            bitrate=self.video_kbps,
+            playlist_path=self.playlist_path(video_id),
+        )
 
 
 LADDER: tuple[Rendition, ...] = (

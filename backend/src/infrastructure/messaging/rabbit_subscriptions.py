@@ -118,32 +118,10 @@ async def status_handler(
             raise VideoNotFoundError()
 
         if msg.status == "ready" and msg.resolutions:
-            resolution_entries = []
-            for r in msg.resolutions:
-                # Support both dict and Pydantic model
-                if isinstance(r, dict):
-                    height = r.get("height")
-                    width = r.get("width")
-                    bitrate = r.get("bitrate")
-                    playlist_path = r.get("playlist_path")
-                else:
-                    height, width, bitrate, playlist_path = (
-                        r.height,
-                        r.width,
-                        r.bitrate,
-                        r.playlist_path,
-                    )
-
-                resolution_entries.append(
-                    {
-                        "id": uuid4(),
-                        "video_id": verified_video.id,
-                        "height": height,
-                        "width": width,
-                        "bitrate": bitrate,
-                        "playlist_path": playlist_path,
-                    }
-                )
+            resolution_entries = [
+                {"id": uuid4(), "video_id": verified_video.id, **r.model_dump()}
+                for r in msg.resolutions
+            ]
 
             await session.execute(insert(VideoResolution), resolution_entries)
             logging.info(

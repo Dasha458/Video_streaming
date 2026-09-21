@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "video-encode-status",
+  "title": "video.encode.status",
+  "description": "Message the convertor publishes on exchange `video.events` with routing key `video.encode.status` after each stage of an encode. Both services carry a test that pins their own model to this file; change the file first, then both models.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "video_id",
+    "status"
+  ],
+  "properties": {
+    "video_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Video.id -- the object key of the uploaded source, without extension."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "processing",
+        "ready",
+        "failed"
+      ]
+    },
+    "resolutions": {
+      "type": "array",
+      "description": "Present only when status is `ready`: one entry per rendition ffmpeg produced.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "height",
+          "width",
+          "bitrate",
+          "playlist_path"
+        ],
+        "properties": {
+          "height": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "width": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "bitrate": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Video bitrate in kbps."
+          },
+          "playlist_path": {
+            "type": "string",
+            "pattern": "^[^/]+/stream_[0-9]+p/playlist\\.m3u8$"
+          }
+        }
+      }
+    },
+    "video_path": {
+      "type": "string",
+      "description": "Present only when status is `ready`: master playlist, bucket-relative.",
+      "pattern": "^minio/videos/[^/]+/master\\.m3u8$"
+    }
+  }
+}

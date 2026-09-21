@@ -7,6 +7,7 @@ from prometheus_client import CollectorRegistry, make_asgi_app
 
 from src.config import get_rabbitmq_settings
 from src.exceptions import AppError, FFmpegExecutionError, InvalidMediaError
+from src.messages import EncodeStatusMessage
 from src.renditions import LADDER
 from src.s3_client import get_s3_client
 from src.services import (
@@ -29,6 +30,14 @@ app = AsgiFastStream(
 )
 
 
+async def publish_status(message: EncodeStatusMessage) -> None:
+    await broker.publish(
+        message.payload(),
+        exchange="video.events",
+        routing_key="video.encode.status",
+    )
+
+
 @broker.subscriber("video.encode")
 async def encode_video(filename: str) -> None:
     s3_client = get_s3_client()
@@ -37,10 +46,8 @@ async def encode_video(filename: str) -> None:
     try:
         base_dir = await prepare_dirs(video_id)
 
-        await broker.publish(
-            {"video_id": video_id, "status": "processing"},
-            exchange="video.events",
-            routing_key="video.encode.status",
+        await publish_status(
+            EncodeStatusMessage(video_id=video_id, status="processing")
         )
 
         video_url = await s3_client.generate_presigned_url(
@@ -94,15 +101,13 @@ async def encode_video(filename: str) -> None:
             if (base_dir / f"stream_{rendition.name}" / "playlist.m3u8").exists()
         ]
 
-        await broker.publish(
-            {
-                "video_id": video_id,
-                "status": "ready",
-                "resolutions": resolutions,
-                "video_path": f"minio/videos/{video_id}/master.m3u8",
-            },
-            exchange="video.events",
-            routing_key="video.encode.status",
+        await publish_status(
+            EncodeStatusMessage(
+                video_id=video_id,
+                status="ready",
+                resolutions=resolutions,
+                video_path=f"minio/videos/{video_id}/master.m3u8",
+            )
         )
 
         logging.info("Video encoding completed", extra={"video_id": video_id})
@@ -110,11 +115,7 @@ async def encode_video(filename: str) -> None:
         await s3_client.delete_file(filename, bucket_name="videos")
 
     except AppError:
-        await broker.publish(
-            {"video_id": video_id, "status": "failed"},
-            exchange="video.events",
-            routing_key="video.encode.status",
-        )
+        await publish_status(EncodeStatusMessage(video_id=video_id, status="failed"))
 
         logging.exception(
             "Unhandled encoding error",
