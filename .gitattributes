@@ -3,3 +3,4 @@
 # made the vault container crash-loop with "syntax error: expecting then".
 *.sh   text eol=lf
 *.hcl  text eol=lf
+*.conf text eol=lf
