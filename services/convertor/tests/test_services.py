@@ -2,15 +2,13 @@
 Comprehensive tests for convertor service functions.
 Tests: prepare_dirs, cleanup_dirs, has_gpu, get_video_properties, stream_ffmpeg.
 """
-import asyncio
+
 import json
 import subprocess
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from src.services import cleanup_dirs, get_video_properties, has_gpu, prepare_dirs, stream_ffmpeg
 from src.exceptions import (
     FFmpegExecutionError,
     FFmpegStartError,
@@ -18,7 +16,13 @@ from src.exceptions import (
     InvalidMediaError,
 )
 from src.schemas import VideoProperties
-
+from src.services import (
+    cleanup_dirs,
+    get_video_properties,
+    has_gpu,
+    prepare_dirs,
+    stream_ffmpeg,
+)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # prepare_dirs / cleanup_dirs (filesystem — no mocks needed)
@@ -84,7 +88,9 @@ def test_has_gpu_returns_true_when_nvenc_available():
 
 def test_has_gpu_returns_false_when_nvidia_smi_fails():
     """nvidia-smi raises CalledProcessError → False."""
-    with patch("subprocess.run", side_effect=subprocess.CalledProcessError(1, "nvidia-smi")):
+    with patch(
+        "subprocess.run", side_effect=subprocess.CalledProcessError(1, "nvidia-smi")
+    ):
         result = has_gpu()
     assert result is False
 
@@ -116,7 +122,10 @@ def test_has_gpu_returns_false_on_any_exception():
 # get_video_properties — mocks asyncio.create_subprocess_exec
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _make_ffprobe_output(width=1280, height=720, fps="30/1", bitrate="2000000", has_audio=True):
+
+def _make_ffprobe_output(
+    width=1280, height=720, fps="30/1", bitrate="2000000", has_audio=True
+):
     streams = [
         {
             "codec_type": "video",
@@ -190,14 +199,18 @@ async def test_get_video_properties_raises_invalid_media_when_no_video_stream():
 
 async def test_get_video_properties_raises_ffprobe_error_on_invalid_json():
     """Malformed ffprobe JSON output raises FFProbeError."""
-    with patch("asyncio.create_subprocess_exec", return_value=_mock_process(b"not-json")):
+    with patch(
+        "asyncio.create_subprocess_exec", return_value=_mock_process(b"not-json")
+    ):
         with pytest.raises(FFProbeError):
             await get_video_properties("http://example.com/video.mp4")
 
 
 async def test_get_video_properties_handles_missing_bitrate():
     """Missing bit_rate key in stream → bitrate defaults to 0."""
-    streams = [{"codec_type": "video", "width": 640, "height": 480, "r_frame_rate": "24/1"}]
+    streams = [
+        {"codec_type": "video", "width": 640, "height": 480, "r_frame_rate": "24/1"}
+    ]
     output = json.dumps({"streams": streams}).encode()
     with patch("asyncio.create_subprocess_exec", return_value=_mock_process(output)):
         props = await get_video_properties("http://example.com/video.mp4")
@@ -230,8 +243,10 @@ def _mock_ffmpeg_process(returncode: int = 0, stderr_chunks: list = None):
 async def test_stream_ffmpeg_cpu_success(tmp_path):
     """stream_ffmpeg completes with CPU codec (force_cpu=True, returncode=0)."""
     proc = _mock_ffmpeg_process(returncode=0)
-    with patch("asyncio.create_subprocess_exec", return_value=proc), \
-         patch("src.services.has_gpu", return_value=False):
+    with (
+        patch("asyncio.create_subprocess_exec", return_value=proc),
+        patch("src.services.has_gpu", return_value=False),
+    ):
         rc = await stream_ffmpeg(
             url="http://example.com/input.mp4",
             output_dir=tmp_path,
@@ -244,8 +259,10 @@ async def test_stream_ffmpeg_cpu_success(tmp_path):
 async def test_stream_ffmpeg_raises_ffmpeg_execution_error_on_nonzero_rc(tmp_path):
     """Non-zero ffmpeg returncode raises FFmpegExecutionError."""
     proc = _mock_ffmpeg_process(returncode=1, stderr_chunks=[b"error: bad codec"])
-    with patch("asyncio.create_subprocess_exec", return_value=proc), \
-         patch("src.services.has_gpu", return_value=False):
+    with (
+        patch("asyncio.create_subprocess_exec", return_value=proc),
+        patch("src.services.has_gpu", return_value=False),
+    ):
         with pytest.raises(FFmpegExecutionError) as exc_info:
             await stream_ffmpeg(
                 url="http://example.com/input.mp4",
@@ -258,8 +275,12 @@ async def test_stream_ffmpeg_raises_ffmpeg_execution_error_on_nonzero_rc(tmp_pat
 
 async def test_stream_ffmpeg_raises_ffmpeg_start_error_when_exec_fails(tmp_path):
     """OSError when starting ffmpeg raises FFmpegStartError."""
-    with patch("asyncio.create_subprocess_exec", side_effect=OSError("ffmpeg not found")), \
-         patch("src.services.has_gpu", return_value=False):
+    with (
+        patch(
+            "asyncio.create_subprocess_exec", side_effect=OSError("ffmpeg not found")
+        ),
+        patch("src.services.has_gpu", return_value=False),
+    ):
         with pytest.raises(FFmpegStartError):
             await stream_ffmpeg(
                 url="http://example.com/input.mp4",
@@ -272,8 +293,10 @@ async def test_stream_ffmpeg_raises_ffmpeg_start_error_when_exec_fails(tmp_path)
 async def test_stream_ffmpeg_no_audio_flag(tmp_path):
     """stream_ffmpeg with has_audio=False still completes successfully."""
     proc = _mock_ffmpeg_process(returncode=0)
-    with patch("asyncio.create_subprocess_exec", return_value=proc), \
-         patch("src.services.has_gpu", return_value=False):
+    with (
+        patch("asyncio.create_subprocess_exec", return_value=proc),
+        patch("src.services.has_gpu", return_value=False),
+    ):
         rc = await stream_ffmpeg(
             url="http://example.com/input.mp4",
             output_dir=tmp_path,

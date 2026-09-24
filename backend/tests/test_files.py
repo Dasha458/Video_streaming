@@ -1,4 +1,5 @@
 """Tests for /api/files/* endpoints."""
+
 import io
 import uuid
 from unittest.mock import AsyncMock, MagicMock
@@ -13,10 +14,24 @@ FAKE_VIDEO_ID = uuid.UUID("cccccccc-cccc-cccc-cccc-cccccccccccc")
 class TestUploadVideoEndpoint:
     """POST /api/files/videos — multipart/form-data upload."""
 
-    def _upload(self, client, name="Test Video", description="A test video",
-                category="education", privacy="public"):
+    def _upload(
+        self,
+        client,
+        name="Test Video",
+        description="A test video",
+        category="education",
+        privacy="public",
+    ):
+        # Metadata travels in the multipart body, not the query string --
+        # titles and descriptions would otherwise land in access logs.
         return client.post(
-            f"/api/files/videos?name={name}&description={description}&category={category}&privacy={privacy}",
+            "/api/files/videos",
+            data={
+                "name": name,
+                "description": description,
+                "category": category,
+                "privacy": privacy,
+            },
             files={
                 "video": ("test.mp4", io.BytesIO(b"fake video content"), "video/mp4"),
                 "thumbnail": ("thumb.jpg", io.BytesIO(b"fake image"), "image/jpeg"),
@@ -59,6 +74,57 @@ class TestUploadVideoEndpoint:
         finally:
             app.dependency_overrides.pop(get_file_service, None)
 
+    def test_upload_without_thumbnail_is_accepted(self, client, app):
+        """The UI marks only Title required; a thumbnail-less upload must work."""
+        from src.api.dependencies.services import get_file_service
+        from src.schemas.endpoint import FileMeta, FileResponse
+
+        svc = AsyncMock()
+        svc.upload_video = AsyncMock(
+            return_value=FileResponse(
+                status="accepted",
+                files=[FileMeta(file_id=FAKE_VIDEO_ID, filename="test.mp4", size=1000)],
+            )
+        )
+        app.dependency_overrides[get_file_service] = lambda: svc
+        try:
+            response = client.post(
+                "/api/files/videos",
+                data={
+                    "name": "No thumbnail",
+                    "description": "",
+                    "category": "education",
+                    "privacy": "public",
+                },
+                files={
+                    "video": ("test.mp4", io.BytesIO(b"fake"), "video/mp4"),
+                },
+            )
+            assert response.status_code == 200
+            assert svc.upload_video.await_args.kwargs["thumbnail"] is None
+        finally:
+            app.dependency_overrides.pop(get_file_service, None)
+
+    def test_upload_with_empty_description_is_accepted(self, client, app):
+        """Description is optional in the UI, so an empty one must not 400."""
+        from src.api.dependencies.services import get_file_service
+        from src.schemas.endpoint import FileMeta, FileResponse
+
+        svc = AsyncMock()
+        svc.upload_video = AsyncMock(
+            return_value=FileResponse(
+                status="accepted",
+                files=[FileMeta(file_id=FAKE_VIDEO_ID, filename="test.mp4", size=1000)],
+            )
+        )
+        app.dependency_overrides[get_file_service] = lambda: svc
+        try:
+            response = self._upload(client, description="")
+            assert response.status_code == 200
+            assert svc.upload_video.await_args.kwargs["description"] == ""
+        finally:
+            app.dependency_overrides.pop(get_file_service, None)
+
     def test_upload_without_auth_returns_401(self, client, app):
         from src.infrastructure.auth import current_active_user
 
@@ -72,7 +138,13 @@ class TestUploadVideoEndpoint:
 
     def test_upload_missing_video_file_returns_422(self, client):
         response = client.post(
-            "/api/files/videos?name=Test+Video&description=A+test+video&category=education&privacy=public",
+            "/api/files/videos",
+            data={
+                "name": "Test Video",
+                "description": "A test video",
+                "category": "education",
+                "privacy": "public",
+            },
             files={
                 "thumbnail": ("thumb.jpg", io.BytesIO(b"fake image"), "image/jpeg"),
             },
@@ -85,23 +157,13 @@ class TestUploadVideoEndpoint:
         svc = AsyncMock()
         app.dependency_overrides[get_file_service] = lambda: svc
         try:
-            response = client.post(
-                "/api/files/videos?name=   &description=A+test+video&category=education&privacy=public",
-                files={
-                    "video": ("test.mp4", io.BytesIO(b"fake"), "video/mp4"),
-                },
-            )
+            response = self._upload(client, name="   ")
             assert response.status_code == 400  # app maps ValidationError → 400
         finally:
             app.dependency_overrides.pop(get_file_service, None)
 
     def test_upload_invalid_category_returns_422(self, client):
-        response = client.post(
-            "/api/files/videos?name=Test+Video&description=A+test&category=not_a_real_category&privacy=public",
-            files={
-                "video": ("test.mp4", io.BytesIO(b"fake"), "video/mp4"),
-            },
-        )
+        response = self._upload(client, category="not_a_real_category")
         assert response.status_code == 400  # app maps ValidationError → 400
 
     def test_upload_duplicate_video_returns_409(self, client, app):

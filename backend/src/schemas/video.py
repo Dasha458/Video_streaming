@@ -159,11 +159,16 @@ class VideoPage(BaseModel):
 
 class VideoUploadParams(BaseModel):
     video: Annotated[UploadFile, File(description="A video file to upload")]
+    # Optional in the UI (only Title is marked required), so optional here:
+    # without the `= None` default Pydantic treats Optional[...] as required
+    # and every upload without a thumbnail was rejected.
     thumbnail: Annotated[
         Optional[UploadFile], File(description="Preview image for the video")
-    ]
+    ] = None
     name: str = Form(..., description="Name of the uploaded files.")
-    description: str = Form(..., description="Description of the uploaded files.")
+    description: str = Form(
+        "", description="Description of the uploaded files. May be empty."
+    )
     category: VideoCategory = Form(..., description="Category of the uploaded files.")
     privacy: Literal["public", "private"] = Form(
         default="public", description="Privacy level: `public` or `private`"
@@ -178,9 +183,7 @@ class VideoUploadParams(BaseModel):
 
     @field_validator("description")
     @classmethod
-    def description_must_not_be_empty(cls, v: str) -> str:
-        if not v.strip():
-            raise ValueError("Description cannot be empty")
+    def strip_description(cls, v: str) -> str:
         return v.strip()
 
 

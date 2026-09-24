@@ -27,8 +27,7 @@ vault = VaultClient()
 
 
 class BaseAppSettings(BaseSettings):
-    class Config:
-        model_config = SettingsConfigDict(env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(env_file_encoding="utf-8")
 
 
 class S3Settings(BaseAppSettings):
