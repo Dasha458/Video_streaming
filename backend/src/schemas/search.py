@@ -81,7 +81,7 @@ class VideoResult(BaseModel):
     id: UUID
     name: str
     description: Optional[str] = None
-    category: Optional[Any] = None          # list or str coming from ES
+    category: Optional[Any] = None  # list or str coming from ES
     views: int = 0
     thumbnail_url: Optional[str] = None
     channel_name: Optional[str] = None
@@ -148,11 +148,11 @@ class VideoSearchRequest(BaseModel):
         return v.strip()
 
     @model_validator(mode="after")
-    @classmethod
-    def check_views_range(cls, model):
-        min_views = model.min_views
-        max_views = model.max_views
-        if min_views is not None and max_views is not None:
-            if min_views > max_views:
-                raise ValueError("min_views cannot be greater than max_views")
-        return model
+    def check_views_range(self) -> "VideoSearchRequest":
+        if (
+            self.min_views is not None
+            and self.max_views is not None
+            and self.min_views > self.max_views
+        ):
+            raise ValueError("min_views cannot be greater than max_views")
+        return self

@@ -6,6 +6,7 @@ from fastapi import (
     APIRouter,
     BackgroundTasks,
     Depends,
+    Form,
     Path,
 )
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -60,7 +61,7 @@ router_files = APIRouter(
     },
 )
 async def upload_files(
-    payload: Annotated[VideoUploadParams, Depends()],
+    payload: Annotated[VideoUploadParams, Form()],
     user_id: UUID = Depends(get_current_user_id),
     service: FileService = Depends(get_file_service),
 ) -> FileResponse:

@@ -130,22 +130,20 @@ export const uploadVideo = async (
   },
 ): Promise<UploadResponse> => {
   try {
+    // Everything goes in the multipart body: a title or description in the
+    // query string would be recorded in the gateway's access log.
     const formData = new FormData();
     formData.append("video", file);
     if (options?.thumbnail) formData.append("thumbnail", options.thumbnail);
+    formData.append("name", options?.title || "Untitled");
+    formData.append("description", options?.description || "");
+    formData.append("privacy", options?.isPublic ? "public" : "private");
+    formData.append("category", options?.category || "entertainment");
 
     const res = await clientApi.post<UploadResponse>(
       `/api/files/videos`,
       formData,
-      {
-        headers: { "Content-Type": "multipart/form-data" },
-        params: {
-          name: options?.title || "Untitled",
-          description: options?.description || "",
-          privacy: options?.isPublic ? "public" : "private",
-          category: options?.category || "entertainment",
-        },
-      },
+      { headers: { "Content-Type": "multipart/form-data" } },
     );
 
     return res.data;

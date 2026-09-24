@@ -46,7 +46,12 @@ pytestmark = pytest.mark.integration
 
 def _start_postgres():
     try:
-        from testcontainers.postgres import PostgresContainer
+        # Moved package in testcontainers 4.x; the old path still works but
+        # warns. Fall back so an older pin keeps running.
+        try:
+            from testcontainers.community.postgres import PostgresContainer
+        except ImportError:  # pragma: no cover - testcontainers < 4.13
+            from testcontainers.postgres import PostgresContainer
     except ImportError:  # pragma: no cover - dev dep missing
         pytest.skip("testcontainers is not installed")
     try:
