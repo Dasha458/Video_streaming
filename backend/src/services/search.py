@@ -105,7 +105,9 @@ class SearchService:
                     "k": offset + limit,
                     "num_candidates": max(100, offset + limit),
                 },
-                _source=["id", "name", "description", "views", "category"],
+                # elasticsearch-py 8+ renamed this parameter to `source`;
+                # `_source` is not accepted and search() takes no **kwargs.
+                source=["id", "name", "description", "views", "category"],
                 query=text_query,
                 rank={"rrf": {}},
                 size=limit,

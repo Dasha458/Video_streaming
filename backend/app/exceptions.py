@@ -12,7 +12,13 @@ def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
         """Dynamically handle all AppError exceptions."""
-        logging.error(f"{exc.__class__.__name__}: {exc.code} - {exc.message}")
+        # 5xx means something we did not anticipate: log the traceback and
+        # the wrapped cause, otherwise the log line says only "search failed"
+        # and the actual Elasticsearch/database error is lost.
+        logging.error(
+            f"{exc.__class__.__name__}: {exc.code} - {exc.message}",
+            exc_info=exc.status_code >= 500,
+        )
         return JSONResponse(
             status_code=exc.status_code,
             content=jsonable_encoder({"code": exc.code, "message": exc.message}),

@@ -140,7 +140,13 @@ def mock_rabbit_broker() -> MagicMock:
 
 @pytest.fixture(scope="session")
 def mock_es_client() -> AsyncMock:
-    es = AsyncMock()
+    from elasticsearch import AsyncElasticsearch
+
+    # spec= so a call with a keyword the real client doesn't take fails here
+    # instead of in production: `_source=` was renamed to `source=` in
+    # elasticsearch-py 8 and search() takes no **kwargs, so the hybrid search
+    # branch 500'd while these tests stayed green.
+    es = AsyncMock(spec=AsyncElasticsearch)
     es.search = AsyncMock(return_value={"hits": {"hits": [], "total": {"value": 0}}})
     es.index = AsyncMock(return_value={"result": "created"})
     es.delete = AsyncMock(return_value={"result": "deleted"})

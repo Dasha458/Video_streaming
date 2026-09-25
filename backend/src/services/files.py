@@ -85,7 +85,7 @@ class FileService:
 
         return channel_id
 
-    async def _upload_thumbnail(self, video_id: UUID, thumbnail: UploadFile) -> str:
+    async def _upload_thumbnail(self, video_id: UUID, thumbnail: UploadFile) -> None:
         thumb_suffix = Path(thumbnail.filename or "").suffix
         thumbnail_id = str(uuid4())
         thumb_name = f"{thumbnail_id}{thumb_suffix}"
