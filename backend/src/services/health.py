@@ -33,7 +33,7 @@ class HealthService:
         self._statuses: list[int] = []
         self.status_code = status.HTTP_200_OK
 
-    async def _check_database(self):
+    async def _check_database(self) -> None:
         try:
             await self.session.execute(text("SELECT 1"))
             self.checks["database"] = "ok"
@@ -42,7 +42,7 @@ class HealthService:
             self.checks["database"] = err.code
             self._statuses.append(err.status_code)
 
-    async def _check_object_storage(self):
+    async def _check_object_storage(self) -> None:
         try:
             await self.s3_client.get_bucket_list()
             self.checks["object_storage"] = "ok"
@@ -51,7 +51,7 @@ class HealthService:
             self.checks["object_storage"] = err.code
             self._statuses.append(err.status_code)
 
-    async def _check_message_broker(self):
+    async def _check_message_broker(self) -> None:
         if self.broker is None:
             self.checks["message_broker"] = "skipped"
             return

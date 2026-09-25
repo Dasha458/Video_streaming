@@ -18,7 +18,7 @@ def get_language(request: Request) -> str:
 
 
 @lru_cache(maxsize=32)
-def get_translation(lang: str):
+def get_translation(lang: str) -> gettext.NullTranslations:
     return gettext.translation(
         "messages",
         localedir=LOCALES_DIR,

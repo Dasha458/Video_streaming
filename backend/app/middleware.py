@@ -1,3 +1,4 @@
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.config import get_github_oauth_settings
@@ -20,7 +21,7 @@ def _cors_origins() -> list[str]:
     return list(origins)
 
 
-def add_middlewares(app):
+def add_middlewares(app: FastAPI) -> None:
     origins = _cors_origins()
 
     app.add_middleware(

@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import Request
+from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from src.core.base_error import AppError
 
 
-def register_exception_handlers(app):
+def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
         """Dynamically handle all AppError exceptions."""

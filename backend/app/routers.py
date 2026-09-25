@@ -1,3 +1,5 @@
+from fastapi import FastAPI
+
 from src.api.analytics import router_analytics
 from src.api.auth import router_auth
 from src.api.changelog import router_changelog
@@ -16,7 +18,7 @@ from src.api.watch_later import router_watch_later
 from src.infrastructure.messaging.rabbit_subscriptions import rabbit_router
 
 
-def include_routers(app):
+def include_routers(app: FastAPI) -> None:
     app.include_router(router_health)
     app.include_router(router_files)
     app.include_router(router_metrics)

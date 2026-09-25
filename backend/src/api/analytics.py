@@ -43,7 +43,7 @@ router_analytics = APIRouter(
 )
 
 
-def _require_channel(deps: tuple):
+def _require_channel(deps: tuple) -> tuple:
     service, channel = deps
     if channel is None:
         raise HTTPException(

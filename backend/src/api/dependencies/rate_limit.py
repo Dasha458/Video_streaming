@@ -1,17 +1,21 @@
+from collections.abc import Awaitable, Callable
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, status
 from fastapi.requests import Request
+from redis.asyncio import Redis
 
 from src.infrastructure import get_redis
 from src.infrastructure.redis.rate_limiter import RateLimiter
 
 
-async def get_rate_limiter(redis=Depends(get_redis)) -> RateLimiter:
+async def get_rate_limiter(redis: Redis = Depends(get_redis)) -> RateLimiter:
     return RateLimiter(redis)
 
 
-def limit_requests(endpoint: str, max_requests: int, window_seconds: int):
+def limit_requests(
+    endpoint: str, max_requests: int, window_seconds: int
+) -> Callable[..., Awaitable[None]]:
     """
     Factory function to create a custom dependency for each endpoint
     Example usage:
@@ -25,7 +29,7 @@ def limit_requests(endpoint: str, max_requests: int, window_seconds: int):
     async def dependency(
         request: Request,
         limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
-    ):
+    ) -> None:
         # Identify by IP (or user ID if available)
         identifier = request.client.host
 

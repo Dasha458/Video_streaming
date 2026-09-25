@@ -104,6 +104,13 @@ strict_optional = true
 explicit_package_bases = true
 exclude = "(alembic|.venv)"
 
+# disallow_untyped_defs above applies to the application. Test functions and
+# dev-only tooling are exempt: annotating several hundred `def test_x():` adds
+# no safety and only hides the real findings in src/.
+[[tool.mypy.overrides]]
+module = ["tests.*", "utils.*"]
+disallow_untyped_defs = false
+
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]

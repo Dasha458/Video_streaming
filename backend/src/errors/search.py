@@ -6,7 +6,7 @@ class VideoSearchError(AppError):
     code = "VIDEO_SEARCH_FAILED"
     status_code = 500
 
-    def __init__(self, query: str, cause: Exception | None = None):
+    def __init__(self, query: str, cause: Exception | None = None) -> None:
         message = _("Failed to perform search for query: '%(query)s'") % {
             "query": query
         }
@@ -17,7 +17,7 @@ class VideoHintsError(AppError):
     code = "VIDEO_HINTS_FAILED"
     status_code = 500
 
-    def __init__(self, query: str, cause: Exception | None = None):
+    def __init__(self, query: str, cause: Exception | None = None) -> None:
         message = _("Failed to perform search hints for query: '%(query)s'") % {
             "query": query
         }

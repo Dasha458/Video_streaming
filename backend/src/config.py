@@ -23,7 +23,8 @@ class DatabaseSettings(BaseAppSettings):
     POSTGRES_USER: Optional[str] = Field(default=None)
     POSTGRES_PASSWORD: Optional[str] = Field(default=None)
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
+    @property
     def database_url(self) -> str:
         return (
             f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
@@ -78,7 +79,8 @@ class RABBITMQSettings(BaseAppSettings):
     RABBITMQ_USER: Optional[str] = Field(default=None)
     RABBITMQ_PASSWORD: Optional[str] = Field(default=None)
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
+    @property
     def rabbitmq_url(self) -> str:
         return (
             f"amqp://{self.RABBITMQ_USER}:{self.RABBITMQ_PASSWORD}"

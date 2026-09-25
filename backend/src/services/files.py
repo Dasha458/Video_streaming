@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from src.infrastructure.s3_client import S3Client
 
 
-async def _hash_and_size(uploaded_file):
+async def _hash_and_size(uploaded_file: UploadFile) -> tuple[str, int]:
     hasher = xxhash.xxh3_128()
     block_size = 1024 * 1024
 
@@ -85,7 +85,7 @@ class FileService:
 
         return channel_id
 
-    async def _upload_thumbnail(self, video_id, thumbnail):
+    async def _upload_thumbnail(self, video_id: UUID, thumbnail: UploadFile) -> str:
         thumb_suffix = Path(thumbnail.filename or "").suffix
         thumbnail_id = str(uuid4())
         thumb_name = f"{thumbnail_id}{thumb_suffix}"
@@ -99,13 +99,13 @@ class FileService:
         )
         await self.session.commit()
 
-    async def _upload_video_file(self, video_id, video):
+    async def _upload_video_file(self, video_id: UUID, video: UploadFile) -> str:
         video_suffix = Path(video.filename or "").suffix
         new_filename = f"{video_id}{video_suffix}"
         await self.s3_client.upload_file(new_filename, video.file, bucket_name="videos")
         return new_filename
 
-    async def _check_video_size(self, size):
+    async def _check_video_size(self, size: int) -> None:
         if size <= 0:
             logging.warning("Empty video file")
             raise EmptyFileError()
@@ -269,7 +269,7 @@ class FileService:
             logging.error(f"S3 streaming error for {object_key}: {e}")
             raise S3DownloadError(object_key) from e
 
-    async def delete_video(self, video_id, user_id):
+    async def delete_video(self, video_id: UUID, user_id: UUID) -> Video:
         # Fetch video & check ownership
         result = await self.session.execute(
             select(Video)

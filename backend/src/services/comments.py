@@ -14,7 +14,7 @@ from src.errors.comments import (
 )
 from src.errors.videos import VideoNotFoundError
 from src.models import Channel, Comment, CommentReaction, Notification, Video
-from src.schemas.comments import to_comment_read
+from src.schemas.comments import CommentRead, to_comment_read
 from src.services.reactions import toggle_reaction
 
 
@@ -22,7 +22,9 @@ class CommentService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get_by_video(self, video_id: UUID, page: int, size: int):
+    async def get_by_video(
+        self, video_id: UUID, page: int, size: int
+    ) -> tuple[list[CommentRead], int]:
         filters = [Comment.video_id == video_id, Comment.parent_id.is_(None)]
         preload = [
             selectinload(Comment.user),
@@ -42,7 +44,7 @@ class CommentService:
 
     async def create(
         self, video_id: UUID, user_id: UUID, content: str, parent_id: UUID | None
-    ):
+    ) -> CommentRead:
         # 1. Validate Video
         video = await self.session.scalar(select(Video).where(Video.id == video_id))
         if not video:
