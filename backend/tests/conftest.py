@@ -70,7 +70,7 @@ _SECRETS_BY_PATH: dict = {
 
 def pytest_configure(config: pytest.Config) -> None:  # noqa: D401
     """Inject Vault mock before any src.* module is imported."""
-    mock_module = types.ModuleType("src.infrastructure.vault")
+    mock_module = types.ModuleType("src.core.vault")
 
     mock_client_instance = MagicMock()
     mock_client_instance.read_secret.side_effect = (
@@ -79,7 +79,7 @@ def pytest_configure(config: pytest.Config) -> None:  # noqa: D401
 
     mock_client_cls = MagicMock(return_value=mock_client_instance)
     mock_module.VaultClient = mock_client_cls  # type: ignore[attr-defined]
-    sys.modules["src.infrastructure.vault"] = mock_module
+    sys.modules["src.core.vault"] = mock_module
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -4,14 +4,11 @@ from typing import List, Optional
 from pydantic import Field, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from src.core.vault import VaultClient
+
 
 @lru_cache()
-def get_vault_client():
-    """
-    Lazy load the VaultClient to prevent circular imports during app startup.
-    """
-    from src.infrastructure.vault import VaultClient
-
+def get_vault_client() -> VaultClient:
     return VaultClient()
 
 
