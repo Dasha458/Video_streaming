@@ -1,11 +1,8 @@
 """Tests for /api/videos/* endpoints."""
+
 import uuid
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
-
-import pytest
-
-from tests.conftest import TEST_USER_ID
+from unittest.mock import AsyncMock
 
 FAKE_VIDEO_ID = uuid.UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
 
@@ -187,7 +184,16 @@ class TestGetVideoByIdEndpoint:
         app.dependency_overrides[get_video_service] = lambda: svc
         try:
             body = client.get(f"/api/videos/{FAKE_VIDEO_ID}").json()
-            for field in ("id", "name", "privacy", "created_at", "channel_name", "likes_count", "dislikes_count", "views_count"):
+            for field in (
+                "id",
+                "name",
+                "privacy",
+                "created_at",
+                "channel_name",
+                "likes_count",
+                "dislikes_count",
+                "views_count",
+            ):
                 assert field in body, f"Missing field: {field}"
         finally:
             app.dependency_overrides.pop(get_video_service, None)

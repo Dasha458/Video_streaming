@@ -1,4 +1,5 @@
 """Tests for /api/search/* endpoints."""
+
 import uuid
 from unittest.mock import AsyncMock
 
@@ -299,3 +300,39 @@ class TestSearchServicePaging:
         result = await service.search_video("cats")
 
         assert result["total"] == 3
+
+
+class TestElasticsearchCallContract:
+    """The ES client takes no **kwargs, so a wrong keyword is a TypeError at
+    runtime. These bind the arguments the service passes against the real
+    client signature -- the mocked tests above cannot catch a rename."""
+
+    def test_hybrid_search_kwargs_match_the_client_signature(self):
+        import inspect
+
+        from elasticsearch import AsyncElasticsearch
+
+        inspect.signature(AsyncElasticsearch.search).bind(
+            None,
+            index="videos",
+            knn={
+                "field": "video_embedding",
+                "query_vector": [0.1],
+                "k": 10,
+                "num_candidates": 100,
+            },
+            source=["id", "name"],
+            query={"match_all": {}},
+            rank={"rrf": {}},
+            size=10,
+            from_=0,
+        )
+
+    def test_hint_search_kwargs_match_the_client_signature(self):
+        import inspect
+
+        from elasticsearch import AsyncElasticsearch
+
+        inspect.signature(AsyncElasticsearch.search).bind(
+            None, index="videos", suggest={"video-suggest": {}}
+        )

@@ -10,7 +10,6 @@ import sys
 import types
 import uuid
 from datetime import datetime, timezone
-from functools import lru_cache
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -71,7 +70,7 @@ _SECRETS_BY_PATH: dict = {
 
 def pytest_configure(config: pytest.Config) -> None:  # noqa: D401
     """Inject Vault mock before any src.* module is imported."""
-    mock_module = types.ModuleType("src.infrastructure.vault")
+    mock_module = types.ModuleType("src.core.vault")
 
     mock_client_instance = MagicMock()
     mock_client_instance.read_secret.side_effect = (
@@ -80,7 +79,7 @@ def pytest_configure(config: pytest.Config) -> None:  # noqa: D401
 
     mock_client_cls = MagicMock(return_value=mock_client_instance)
     mock_module.VaultClient = mock_client_cls  # type: ignore[attr-defined]
-    sys.modules["src.infrastructure.vault"] = mock_module
+    sys.modules["src.core.vault"] = mock_module
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -141,7 +140,13 @@ def mock_rabbit_broker() -> MagicMock:
 
 @pytest.fixture(scope="session")
 def mock_es_client() -> AsyncMock:
-    es = AsyncMock()
+    from elasticsearch import AsyncElasticsearch
+
+    # spec= so a call with a keyword the real client doesn't take fails here
+    # instead of in production: `_source=` was renamed to `source=` in
+    # elasticsearch-py 8 and search() takes no **kwargs, so the hybrid search
+    # branch 500'd while these tests stayed green.
+    es = AsyncMock(spec=AsyncElasticsearch)
     es.search = AsyncMock(return_value={"hits": {"hits": [], "total": {"value": 0}}})
     es.index = AsyncMock(return_value={"result": "created"})
     es.delete = AsyncMock(return_value={"result": "deleted"})

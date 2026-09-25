@@ -6,16 +6,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from uuid import NAMESPACE_DNS, UUID, uuid5
 
-from fastapi_users.password import PasswordHelper
-
-_password_helper = PasswordHelper()
-# All seed users share this password. Change before deploying to production.
-SEED_PASSWORD = "Test1234!"
-_SEED_HASHED_PASSWORD = _password_helper.hash(SEED_PASSWORD)
-
 import aiofiles
 import httpx
 from fastapi import UploadFile
+from fastapi_users.password import PasswordHelper
 from sqlalchemy.dialects.postgresql import insert
 from starlette.datastructures import Headers
 
@@ -34,6 +28,11 @@ from src.models import (
 )
 from src.models.video import Video
 from src.services.files import FileService
+
+_password_helper = PasswordHelper()
+# All seed users share this password. Change before deploying to production.
+SEED_PASSWORD = "Test1234!"
+_SEED_HASHED_PASSWORD = _password_helper.hash(SEED_PASSWORD)
 
 SEED_FILE = Path(__file__).parent / "initial_data.json"
 
@@ -250,18 +249,24 @@ async def seed_users_channels_videos(session) -> None:
 
         # ── User ──────────────────────────────────────────────────────────────
         await session.execute(
-            insert(User).values([{
-                "id": user_id,
-                "username": username,
-                "email": u["email"],
-                "hashed_password": _SEED_HASHED_PASSWORD,
-                "is_active": True,
-                "is_superuser": u["role"] == "admin",
-                "is_verified": True,
-                "status_id": active_status_id,
-                "role_id": role_id,
-                "created_at": created_at_base,
-            }]).on_conflict_do_nothing(index_elements=["username"])
+            insert(User)
+            .values(
+                [
+                    {
+                        "id": user_id,
+                        "username": username,
+                        "email": u["email"],
+                        "hashed_password": _SEED_HASHED_PASSWORD,
+                        "is_active": True,
+                        "is_superuser": u["role"] == "admin",
+                        "is_verified": True,
+                        "status_id": active_status_id,
+                        "role_id": role_id,
+                        "created_at": created_at_base,
+                    }
+                ]
+            )
+            .on_conflict_do_nothing(index_elements=["username"])
         )
 
         channel_id = deterministic_uuid("channel", u["name"])
@@ -269,17 +274,23 @@ async def seed_users_channels_videos(session) -> None:
 
         # ── Channel ───────────────────────────────────────────────────────────
         await session.execute(
-            insert(Channel).values([{
-                "id": channel_id,
-                "name": channel_name,
-                "user_id": user_id,
-                "subscribers_count": idx * 137,
-                "description": f"Official channel of {u['name']}.",
-                "views_count": idx * 2500,
-                "avatar_path": f"/minio/avatars/{channel_id}.png",
-                "background_path": f"/minio/backgrounds/{channel_id}.png",
-                "created_at": created_at_base,
-            }]).on_conflict_do_nothing(index_elements=["id"])
+            insert(Channel)
+            .values(
+                [
+                    {
+                        "id": channel_id,
+                        "name": channel_name,
+                        "user_id": user_id,
+                        "subscribers_count": idx * 137,
+                        "description": f"Official channel of {u['name']}.",
+                        "views_count": idx * 2500,
+                        "avatar_path": f"/minio/avatars/{channel_id}.png",
+                        "background_path": f"/minio/backgrounds/{channel_id}.png",
+                        "created_at": created_at_base,
+                    }
+                ]
+            )
+            .on_conflict_do_nothing(index_elements=["id"])
         )
 
         # ── Videos ────────────────────────────────────────────────────────────
@@ -289,24 +300,30 @@ async def seed_users_channels_videos(session) -> None:
             fake_hash = f"seed_{username}_{v_idx:02d}_{'x' * 16}"
 
             await session.execute(
-                insert(Video).values([{
-                    "id": video_id,
-                    "name": v["name"],
-                    "description": v["description"],
-                    "size": 60_000_000 + v_idx * 5_000_000,
-                    "hash": fake_hash,
-                    "video_path": f"/minio/videos/{video_id}/master.m3u8",
-                    "thumbnail_path": None,
-                    "channel_id": channel_id,
-                    "privacy_id": privacy_id,
-                    "category_id": category_id,
-                    "status_id": status_id,
-                    "views_count": (idx + v_idx) * 312,
-                    "likes_count": (idx + v_idx) * 47,
-                    "dislikes_count": v_idx * 3,
-                    "created_at": created_at_base,
-                    "updated_at": created_at_base,
-                }]).on_conflict_do_nothing(index_elements=["hash"])
+                insert(Video)
+                .values(
+                    [
+                        {
+                            "id": video_id,
+                            "name": v["name"],
+                            "description": v["description"],
+                            "size": 60_000_000 + v_idx * 5_000_000,
+                            "hash": fake_hash,
+                            "video_path": f"/minio/videos/{video_id}/master.m3u8",
+                            "thumbnail_path": None,
+                            "channel_id": channel_id,
+                            "privacy_id": privacy_id,
+                            "category_id": category_id,
+                            "status_id": status_id,
+                            "views_count": (idx + v_idx) * 312,
+                            "likes_count": (idx + v_idx) * 47,
+                            "dislikes_count": v_idx * 3,
+                            "created_at": created_at_base,
+                            "updated_at": created_at_base,
+                        }
+                    ]
+                )
+                .on_conflict_do_nothing(index_elements=["hash"])
             )
 
     await session.commit()

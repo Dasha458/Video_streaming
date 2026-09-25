@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import Request
+from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -8,11 +8,17 @@ from fastapi.responses import JSONResponse
 from src.core.base_error import AppError
 
 
-def register_exception_handlers(app):
+def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
         """Dynamically handle all AppError exceptions."""
-        logging.error(f"{exc.__class__.__name__}: {exc.code} - {exc.message}")
+        # 5xx means something we did not anticipate: log the traceback and
+        # the wrapped cause, otherwise the log line says only "search failed"
+        # and the actual Elasticsearch/database error is lost.
+        logging.error(
+            f"{exc.__class__.__name__}: {exc.code} - {exc.message}",
+            exc_info=exc.status_code >= 500,
+        )
         return JSONResponse(
             status_code=exc.status_code,
             content=jsonable_encoder({"code": exc.code, "message": exc.message}),
@@ -25,7 +31,10 @@ def register_exception_handlers(app):
         logging.exception(f"Unhandled error: {exc}")
         return JSONResponse(
             status_code=500,
-            content={"code": "INTERNAL_SERVER_ERROR", "message": "Internal server error"},
+            content={
+                "code": "INTERNAL_SERVER_ERROR",
+                "message": "Internal server error",
+            },
         )
 
     @app.exception_handler(RequestValidationError)

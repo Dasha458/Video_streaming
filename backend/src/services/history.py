@@ -15,7 +15,9 @@ class HistoryService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def list(self, user_id: UUID, page: int, size: int) -> Tuple[List[HistoryVideoItem], int]:
+    async def list(
+        self, user_id: UUID, page: int, size: int
+    ) -> Tuple[List[HistoryVideoItem], int]:
         return await paginate_query(
             self.session,
             WatchHistory,

@@ -51,7 +51,9 @@ class S3Client:
                                     {
                                         "AllowedHeaders": ["Authorization", "Range"],
                                         "AllowedMethods": ["GET"],
-                                        "AllowedOrigins": [get_github_oauth_settings().FRONTEND_URL],
+                                        "AllowedOrigins": [
+                                            get_github_oauth_settings().FRONTEND_URL
+                                        ],
                                         "ExposeHeaders": ["ETag"],
                                         "MaxAgeSeconds": 3000,
                                     }

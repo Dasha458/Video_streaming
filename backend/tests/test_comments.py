@@ -1,9 +1,8 @@
 """Tests for /api/comments/* endpoints."""
+
 import uuid
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock
-
-import pytest
+from unittest.mock import AsyncMock
 
 from tests.conftest import TEST_USER_ID
 

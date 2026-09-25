@@ -1,6 +1,6 @@
 import logging
 import re
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from botocore.exceptions import BotoCoreError, ClientError
 
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from src.infrastructure.s3_client import S3Client
 
 
-def parse_minio_path(file_path: str):
+def parse_minio_path(file_path: str) -> tuple[str, ...]:
     match = re.match(r"^/minio/([^/]+)/(.*)$", file_path)
     if not match:
         raise InvalidFilePathError()
@@ -22,11 +22,11 @@ def parse_minio_path(file_path: str):
 
 
 class FileSigningService:
-    def __init__(self, s3_client: "S3Client", expires_in=3600):
+    def __init__(self, s3_client: "S3Client", expires_in: int = 3600) -> None:
         self.s3_client = s3_client
         self.expires_in = expires_in
 
-    async def create_signed_url(self, file_path: str):
+    async def create_signed_url(self, file_path: str) -> dict[str, Any]:
         bucket, key = parse_minio_path(file_path)
 
         try:

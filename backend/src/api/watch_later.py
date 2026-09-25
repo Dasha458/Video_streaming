@@ -33,7 +33,9 @@ async def get_watch_later(
     service: WatchLaterService = Depends(get_watch_later_service),
 ) -> WatchLaterPage:
     items, total = await service.list(user_id, payload.page, payload.size)
-    return WatchLaterPage(items=items, page=payload.page, size=payload.size, total=total)
+    return WatchLaterPage(
+        items=items, page=payload.page, size=payload.size, total=total
+    )
 
 
 @router_watch_later.post(

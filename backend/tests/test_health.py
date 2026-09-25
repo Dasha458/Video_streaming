@@ -1,7 +1,6 @@
 """Tests for GET /api/health/live and GET /api/health/ready."""
-from unittest.mock import AsyncMock
 
-import pytest
+from unittest.mock import AsyncMock
 
 
 class TestLivenessEndpoint:

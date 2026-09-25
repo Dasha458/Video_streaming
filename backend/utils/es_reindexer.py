@@ -44,8 +44,6 @@ async def reindex_videos_from_db(batch_size: int = 500) -> None:
             for v in videos:
                 name = str(v.name).strip()
                 description = str(v.description).strip()
-                category = v.category.name.split() if v.category else []
-
                 suggestion_inputs = [name]
 
                 if description:

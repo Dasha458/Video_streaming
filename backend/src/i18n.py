@@ -1,5 +1,5 @@
 import gettext
-from _contextvars import ContextVar
+from contextvars import ContextVar
 from functools import lru_cache
 from typing import Callable
 
@@ -18,7 +18,7 @@ def get_language(request: Request) -> str:
 
 
 @lru_cache(maxsize=32)
-def get_translation(lang: str):
+def get_translation(lang: str) -> gettext.NullTranslations:
     return gettext.translation(
         "messages",
         localedir=LOCALES_DIR,

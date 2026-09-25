@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engin
 # NOTE: no `src.*` imports at module level anywhere in this file. src/__init__.py
 # eagerly imports the whole app (api -> infrastructure.database -> config ->
 # get_vault_client()), which raises unless tests/conftest.py's pytest_configure
-# has already patched src.infrastructure.vault into sys.modules -- and conftest.py
+# has already patched src.core.vault into sys.modules -- and conftest.py
 # files are imported before any pytest_configure hook runs. Every src.* symbol
 # below is imported lazily, inside the function/fixture that needs it, exactly
 # like tests/conftest.py's own docstring requires for test modules.

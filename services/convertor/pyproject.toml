@@ -49,10 +49,11 @@ skip = ["alembic", ".venv"]
 line-length = 88
 target-version = "py312"
 exclude = ["alembic", ".venv"]
-fix = true
+# No `fix = true` -- see the note in backend/pyproject.toml.
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]  # E/W — pycodestyle, F — pyflakes, I — isort
+ignore = ["E501"]  # black owns line wrapping
 
 [tool.mypy]
 python_version = 3.12

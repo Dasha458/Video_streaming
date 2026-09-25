@@ -4,14 +4,11 @@ from typing import List, Optional
 from pydantic import Field, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from src.core.vault import VaultClient
+
 
 @lru_cache()
-def get_vault_client():
-    """
-    Lazy load the VaultClient to prevent circular imports during app startup.
-    """
-    from src.infrastructure.vault import VaultClient
-
+def get_vault_client() -> VaultClient:
     return VaultClient()
 
 
@@ -26,7 +23,8 @@ class DatabaseSettings(BaseAppSettings):
     POSTGRES_USER: Optional[str] = Field(default=None)
     POSTGRES_PASSWORD: Optional[str] = Field(default=None)
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
+    @property
     def database_url(self) -> str:
         return (
             f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
@@ -56,7 +54,7 @@ class JWTSettings(BaseAppSettings):
         if v == "CHANGE-ME-IN-PRODUCTION" or len(v) < 32:
             raise ValueError(
                 "JWT_SECRET must be set to a strong random value of at least 32 characters. "
-                "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+                'Generate one with: python -c "import secrets; print(secrets.token_hex(32))"'
             )
         return v
 
@@ -81,7 +79,8 @@ class RABBITMQSettings(BaseAppSettings):
     RABBITMQ_USER: Optional[str] = Field(default=None)
     RABBITMQ_PASSWORD: Optional[str] = Field(default=None)
 
-    @computed_field
+    @computed_field  # type: ignore[prop-decorator]
+    @property
     def rabbitmq_url(self) -> str:
         return (
             f"amqp://{self.RABBITMQ_USER}:{self.RABBITMQ_PASSWORD}"
