@@ -14,7 +14,9 @@ class LikedService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def list_liked(self, user_id: UUID, page: int, size: int) -> Tuple[List[VideoPreview], int]:
+    async def list_liked(
+        self, user_id: UUID, page: int, size: int
+    ) -> Tuple[List[VideoPreview], int]:
         like_type = await self.session.scalar(
             select(ReactionType).where(ReactionType.name == "like")
         )

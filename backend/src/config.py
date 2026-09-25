@@ -56,7 +56,7 @@ class JWTSettings(BaseAppSettings):
         if v == "CHANGE-ME-IN-PRODUCTION" or len(v) < 32:
             raise ValueError(
                 "JWT_SECRET must be set to a strong random value of at least 32 characters. "
-                "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+                'Generate one with: python -c "import secrets; print(secrets.token_hex(32))"'
             )
         return v
 

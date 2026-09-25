@@ -61,9 +61,7 @@ class AuthService:
         user.hashed_password = self.user_manager.password_helper.hash(new_password)
         await self.session.commit()
 
-    async def check_user_exists(
-        self, username: str, email: str
-    ) -> tuple[bool, bool]:
+    async def check_user_exists(self, username: str, email: str) -> tuple[bool, bool]:
         username_result = await self.session.execute(
             select(User).where(User.username == username)
         )

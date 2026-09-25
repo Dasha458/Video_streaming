@@ -6,7 +6,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class ChannelCreate(BaseModel):
-    name: str = Field(..., min_length=3, max_length=50, description="Unique channel name")
+    name: str = Field(
+        ..., min_length=3, max_length=50, description="Unique channel name"
+    )
     description: Optional[str] = Field(None, max_length=500)
 
 

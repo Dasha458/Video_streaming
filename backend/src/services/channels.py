@@ -3,7 +3,6 @@ from uuid import UUID
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from src.errors.channels import (
     AlreadySubscribedError,
@@ -14,14 +13,21 @@ from src.errors.channels import (
     NotSubscribedError,
 )
 from src.models import Channel, Notification, Subscription, Video
-from src.schemas.channel import ChannelCreate, ChannelResponse, ChannelSubscriptionItem, ChannelUpdate
+from src.schemas.channel import (
+    ChannelCreate,
+    ChannelResponse,
+    ChannelSubscriptionItem,
+    ChannelUpdate,
+)
 
 
 class ChannelService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def create_channel(self, user_id: UUID, data: ChannelCreate) -> ChannelResponse:
+    async def create_channel(
+        self, user_id: UUID, data: ChannelCreate
+    ) -> ChannelResponse:
         # Check user doesn't already have a channel
         existing = await self.session.scalar(
             select(Channel).where(Channel.user_id == user_id)
@@ -55,7 +61,9 @@ class ChannelService:
         videos_count = await self._count_videos(channel.id)
         return self._to_response(channel, is_owner=True, videos_count=videos_count)
 
-    async def get_by_name(self, channel_name: str, user_id: UUID | None) -> ChannelResponse:
+    async def get_by_name(
+        self, channel_name: str, user_id: UUID | None
+    ) -> ChannelResponse:
         channel = await self.session.scalar(
             select(Channel).where(Channel.name == channel_name)
         )
@@ -65,15 +73,25 @@ class ChannelService:
         videos_count = await self._count_videos(channel.id)
         is_subscribed = False
         if user_id is not None and not is_owner:
-            is_subscribed = await self.session.scalar(
-                select(Subscription).where(
-                    Subscription.subscriber_id == user_id,
-                    Subscription.channel_id == channel.id,
+            is_subscribed = (
+                await self.session.scalar(
+                    select(Subscription).where(
+                        Subscription.subscriber_id == user_id,
+                        Subscription.channel_id == channel.id,
+                    )
                 )
-            ) is not None
-        return self._to_response(channel, is_owner=is_owner, videos_count=videos_count, is_subscribed=is_subscribed)
+                is not None
+            )
+        return self._to_response(
+            channel,
+            is_owner=is_owner,
+            videos_count=videos_count,
+            is_subscribed=is_subscribed,
+        )
 
-    async def update_channel(self, user_id: UUID, data: ChannelUpdate) -> ChannelResponse:
+    async def update_channel(
+        self, user_id: UUID, data: ChannelUpdate
+    ) -> ChannelResponse:
         channel = await self.session.scalar(
             select(Channel).where(Channel.user_id == user_id)
         )
@@ -113,12 +131,14 @@ class ChannelService:
 
         self.session.add(Subscription(subscriber_id=user_id, channel_id=channel.id))
         channel.subscribers_count += 1
-        self.session.add(Notification(
-            user_id=channel.user_id,
-            content="Someone subscribed to your channel",
-            link=f"/channel/{channel.name}",
-            notification_type="new_subscriber",
-        ))
+        self.session.add(
+            Notification(
+                user_id=channel.user_id,
+                content="Someone subscribed to your channel",
+                link=f"/channel/{channel.name}",
+                notification_type="new_subscriber",
+            )
+        )
         await self.session.commit()
 
     async def unsubscribe(self, channel_name: str, user_id: UUID) -> None:
@@ -162,21 +182,26 @@ class ChannelService:
     # --- Helpers ---
 
     async def _get_channel_by_name(self, name: str) -> Channel:
-        channel = await self.session.scalar(
-            select(Channel).where(Channel.name == name)
-        )
+        channel = await self.session.scalar(select(Channel).where(Channel.name == name))
         if not channel:
             raise ChannelNotFoundError()
         return channel
 
     async def _count_videos(self, channel_id: UUID) -> int:
         result = await self.session.scalar(
-            select(func.count()).select_from(Video).where(Video.channel_id == channel_id)
+            select(func.count())
+            .select_from(Video)
+            .where(Video.channel_id == channel_id)
         )
         return result or 0
 
     @staticmethod
-    def _to_response(channel: Channel, is_owner: bool = False, videos_count: int = 0, is_subscribed: bool = False) -> ChannelResponse:
+    def _to_response(
+        channel: Channel,
+        is_owner: bool = False,
+        videos_count: int = 0,
+        is_subscribed: bool = False,
+    ) -> ChannelResponse:
         return ChannelResponse(
             id=channel.id,
             name=channel.name,

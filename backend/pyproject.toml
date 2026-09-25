@@ -80,13 +80,19 @@ include_trailing_comma = true
 skip = ["alembic", ".venv"]
 
 [tool.ruff]
-line-length = 110
+# Same width black and isort use -- ruff previously said 110 while black
+# reformatted to 88, so the two tools disagreed about the same file.
+line-length = 88
 target-version = "py312"
 exclude = ["alembic", ".venv"]
-fix = true
+# No `fix = true`: a bare `ruff check .` would then silently rewrite the
+# whole tree as a side effect of asking a question. Pass --fix explicitly.
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]  # E/W — pycodestyle, F — pyflakes, I — isort
+# black owns line wrapping; it deliberately leaves long strings/URLs intact,
+# so enforcing E501 on top of it only produces unfixable noise.
+ignore = ["E501"]
 
 [tool.mypy]
 python_version = 3.12

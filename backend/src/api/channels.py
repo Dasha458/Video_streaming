@@ -5,10 +5,15 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
 from src.api.dependencies.services import get_channel_service
-from src.schemas.channel import ChannelCreate, ChannelResponse, ChannelSubscriptionItem, ChannelUpdate
+from src.schemas.channel import (
+    ChannelCreate,
+    ChannelResponse,
+    ChannelSubscriptionItem,
+    ChannelUpdate,
+)
 from src.schemas.endpoint import ErrorResponse
-from src.services.dependencies import get_current_user_id, get_optional_user_id
 from src.services.channels import ChannelService
+from src.services.dependencies import get_current_user_id, get_optional_user_id
 
 router_channels = APIRouter(
     prefix="/api/channels",
@@ -28,7 +33,10 @@ router_channels = APIRouter(
     summary="Create channel",
     description="Creates a channel for the authenticated user.",
     responses={
-        409: {"model": ErrorResponse, "description": "User already has a channel or name is taken."},
+        409: {
+            "model": ErrorResponse,
+            "description": "User already has a channel or name is taken.",
+        },
     },
 )
 async def create_channel(
@@ -105,7 +113,10 @@ async def get_channel(
     status_code=204,
     summary="Subscribe to a channel",
     responses={
-        409: {"model": ErrorResponse, "description": "Already subscribed or own channel."},
+        409: {
+            "model": ErrorResponse,
+            "description": "Already subscribed or own channel.",
+        },
         404: {"model": ErrorResponse, "description": "Channel not found."},
     },
 )

@@ -1,8 +1,7 @@
 """Tests for /api/analytics/* endpoints."""
+
 import uuid
 from unittest.mock import AsyncMock, MagicMock
-
-import pytest
 
 from tests.conftest import TEST_USER_ID
 
@@ -90,9 +89,9 @@ class TestAnalyticsOverviewEndpoint:
                 app.dependency_overrides[current_active_user] = original
 
     def test_no_channel_returns_404(self, client, app):
-        from src.api.dependencies.services import get_service_and_channel
-        from src.errors.files import ChannelNotFoundError
         from fastapi import HTTPException
+
+        from src.api.dependencies.services import get_service_and_channel
 
         async def raise_404():
             raise HTTPException(status_code=404, detail="Channel not found")

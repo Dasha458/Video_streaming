@@ -7,7 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.core.pagination import paginate_query
-from src.errors.watch_later import AlreadyInWatchLaterError, WatchLaterEntryNotFoundError
+from src.errors.watch_later import (
+    AlreadyInWatchLaterError,
+    WatchLaterEntryNotFoundError,
+)
 from src.models import Video, WatchLater
 from src.schemas.watch_later import WatchLaterVideoItem
 
@@ -16,7 +19,9 @@ class WatchLaterService:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def list(self, user_id: UUID, page: int, size: int) -> Tuple[List[WatchLaterVideoItem], int]:
+    async def list(
+        self, user_id: UUID, page: int, size: int
+    ) -> Tuple[List[WatchLaterVideoItem], int]:
         return await paginate_query(
             self.session,
             WatchLater,

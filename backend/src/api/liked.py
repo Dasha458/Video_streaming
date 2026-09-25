@@ -33,4 +33,6 @@ async def get_liked_videos(
     service: LikedService = Depends(get_liked_service),
 ) -> VideoPreviewPage:
     items, total = await service.list_liked(user_id, payload.page, payload.size)
-    return VideoPreviewPage(items=items, page=payload.page, size=payload.size, total=total)
+    return VideoPreviewPage(
+        items=items, page=payload.page, size=payload.size, total=total
+    )

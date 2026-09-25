@@ -16,7 +16,6 @@ from src.api.dependencies.services import (
     get_analytics_service,
     get_service_and_channel,
 )
-from src.services.analytics import AnalyticsService
 from src.schemas.analytics import (
     AudienceResponse,
     ContentResponse,
@@ -29,6 +28,7 @@ from src.schemas.analytics import (
     WatchSessionAck,
     WatchSessionPing,
 )
+from src.services.analytics import AnalyticsService
 from src.services.dependencies import get_optional_user_id
 
 router_analytics = APIRouter(

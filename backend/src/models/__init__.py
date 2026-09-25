@@ -33,6 +33,7 @@ __all__ = [
     "CommentReaction",
     "VideoReaction",
     "VideoView",
+    "VideoWatchSession",
     "Notification",
     "Subscription",
     "WatchHistory",

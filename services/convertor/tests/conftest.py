@@ -4,6 +4,7 @@ Convertor test configuration.
 The convertor's src/config.py calls hvac.Client() at module level.
 We must mock hvac before any src.* module is imported.
 """
+
 import sys
 import types
 from unittest.mock import MagicMock

@@ -1,4 +1,5 @@
 """Tests for /api/search/* endpoints."""
+
 import uuid
 from unittest.mock import AsyncMock
 

@@ -1,5 +1,5 @@
 import gettext
-from _contextvars import ContextVar
+from contextvars import ContextVar
 from functools import lru_cache
 from typing import Callable
 

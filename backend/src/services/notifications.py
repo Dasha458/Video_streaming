@@ -24,11 +24,17 @@ class NotificationService:
             mapper=NotificationResponse.model_validate,
         )
 
-        unread_count = await self.session.scalar(
-            select(func.count())
-            .select_from(Notification)
-            .where(Notification.user_id == user_id, Notification.is_read == False)  # noqa: E712
-        ) or 0
+        unread_count = (
+            await self.session.scalar(
+                select(func.count())
+                .select_from(Notification)
+                .where(
+                    Notification.user_id == user_id,
+                    Notification.is_read.is_(False),
+                )
+            )
+            or 0
+        )
 
         return NotificationsPage(items=items, unread_count=unread_count, total=total)
 
@@ -47,7 +53,10 @@ class NotificationService:
     async def mark_all_read(self, user_id: UUID) -> None:
         await self.session.execute(
             update(Notification)
-            .where(Notification.user_id == user_id, Notification.is_read == False)  # noqa: E712
+            .where(
+                Notification.user_id == user_id,
+                Notification.is_read.is_(False),
+            )
             .values(is_read=True)
         )
         await self.session.commit()
@@ -61,10 +70,12 @@ class NotificationService:
         link: str,
         notification_type: str | None = None,
     ) -> None:
-        session.add(Notification(
-            user_id=user_id,
-            content=content,
-            link=link,
-            notification_type=notification_type,
-        ))
+        session.add(
+            Notification(
+                user_id=user_id,
+                content=content,
+                link=link,
+                notification_type=notification_type,
+            )
+        )
         await session.commit()

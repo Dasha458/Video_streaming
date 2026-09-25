@@ -4,10 +4,6 @@ import io
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
-
-from tests.conftest import TEST_USER_ID
-
 FAKE_VIDEO_ID = uuid.UUID("cccccccc-cccc-cccc-cccc-cccccccccccc")
 
 
@@ -185,7 +181,6 @@ class TestDeleteVideoEndpoint:
 
     def test_owner_deletes_video_returns_200(self, client, app):
         from src.api.dependencies.services import get_file_service
-        from src.schemas.endpoint import FileMeta, FileResponse
 
         deleted_video = MagicMock()
         deleted_video.name = "Test Video"
