@@ -30,8 +30,10 @@ def limit_requests(
         request: Request,
         limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
     ) -> None:
-        # Identify by IP (or user ID if available)
-        identifier = request.client.host
+        # request.client is None when the ASGI transport has no peer address
+        # (in-process test clients, some proxies) -- fall back to one shared
+        # bucket rather than raising AttributeError inside a dependency.
+        identifier = request.client.host if request.client else "unknown"
 
         is_limited = await limiter.is_limited(
             ip_address=identifier,

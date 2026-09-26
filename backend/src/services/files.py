@@ -1,5 +1,6 @@
 import logging
 import uuid
+from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 from uuid import NAMESPACE_DNS, UUID, uuid4, uuid5
@@ -73,7 +74,7 @@ class FileService:
 
         if not channel_id:
             user_result = await self.session.execute(
-                select(User.username).where(User.id == user_id)
+                select(User.username).where(User.id == user_id)  # type: ignore[arg-type]
             )
             username = user_result.scalar_one_or_none()
             if not username:
@@ -116,15 +117,15 @@ class FileService:
 
     async def _insert_video(
         self,
-        video_id,
-        name,
-        description,
-        channel_id,
-        video_size,
-        video_hash,
-        privacy,
-        category,
-    ):
+        video_id: UUID,
+        name: str,
+        description: str,
+        channel_id: UUID,
+        video_size: int,
+        video_hash: str,
+        privacy: str,
+        category: str,
+    ) -> UUID | None:
         result = await self.session.execute(
             insert(Video)
             .values(
@@ -259,7 +260,7 @@ class FileService:
         object_key: str,
         bucket_name: str = "videos",
         chunk_size: int = 1024 * 1024 * 3,
-    ):
+    ) -> AsyncGenerator[bytes, None]:
         """Returns a generator for StreamingResponse"""
         try:
             return self.s3_client.download_file(

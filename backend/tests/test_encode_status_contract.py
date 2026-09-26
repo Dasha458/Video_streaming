@@ -22,6 +22,7 @@ def test_every_contract_example_parses(example: dict) -> None:
     assert str(msg.video_id) == example["video_id"]
     assert msg.status == example["status"]
     if "resolutions" in example:
+        assert msg.resolutions is not None
         assert [r.model_dump() for r in msg.resolutions] == example["resolutions"]
         assert msg.video_path == example["video_path"]
 

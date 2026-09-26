@@ -102,8 +102,8 @@ class GitHubOAuthService:
 
         oauth_result = await self.session.execute(
             select(OAuthAccount).where(
-                OAuthAccount.oauth_name == GITHUB_OAUTH_NAME,
-                OAuthAccount.account_id == github_id,
+                OAuthAccount.oauth_name == GITHUB_OAUTH_NAME,  # type: ignore[arg-type]
+                OAuthAccount.account_id == github_id,  # type: ignore[arg-type]
             )
         )
         oauth_account = oauth_result.scalar_one_or_none()
@@ -115,7 +115,7 @@ class GitHubOAuthService:
             return linked_user
 
         user_result = await self.session.execute(
-            select(User).where(User.email == email)
+            select(User).where(User.email == email)  # type: ignore[arg-type]
         )
         user = user_result.scalar_one_or_none()
 

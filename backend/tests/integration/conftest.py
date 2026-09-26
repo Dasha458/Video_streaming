@@ -18,7 +18,7 @@ suite stays runnable on a machine without Docker.
 """
 
 import uuid
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Generator
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -63,7 +63,7 @@ def _start_postgres():
 
 
 @pytest.fixture(scope="session")
-def postgres_url() -> str:
+def postgres_url() -> Generator[str, None, None]:
     container = _start_postgres()
     yield container.get_connection_url()
     container.stop()
