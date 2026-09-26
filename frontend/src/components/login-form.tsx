@@ -111,12 +111,11 @@ export function LoginForm({
                                     />
                                 </div>
                                 <div className="grid gap-3">
-                                    <div className="flex items-center">
-                                        <Label htmlFor="password">Password</Label>
-                                        <Link to="/forgotpass" className="ml-auto text-sm underline-offset-4 hover:underline">
-                                            Forgot your password?
-                                        </Link>
-                                    </div>
+                                    {/* No "Forgot your password?" link: the backend issues a
+                                        reset token but sends no email (no provider is wired
+                                        up), so the flow would silently never complete.
+                                        Restore this together with email delivery. */}
+                                    <Label htmlFor="password">Password</Label>
                                     <PasswordInput
                                         id="password"
                                         value={password}
