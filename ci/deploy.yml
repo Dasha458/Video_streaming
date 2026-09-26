@@ -12,8 +12,6 @@ detect-changes:
     - |
       # SERVICE:path pairs. SERVICE must match the `deploy` job's matrix
       # names below; path is the repo prefix that job actually builds from.
-      # services/moderation is deliberately absent: it is a stub with no
-      # Dockerfile, so `docker build` on it can only fail. Re-add once real.
       for PAIR in backend:backend convertor:services/convertor frontend:frontend; do
         SERVICE="${PAIR%%:*}"
         PATH_PREFIX="${PAIR#*:}"
