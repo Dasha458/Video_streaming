@@ -1,3 +1,4 @@
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,16 +13,6 @@ from src.infrastructure.auth import UserManager
 from src.models import User
 
 
-class _Credentials:
-    """Minimal object satisfying fastapi-users' authenticate(credentials=...) interface."""
-
-    __slots__ = ("username", "password")
-
-    def __init__(self, username: str, password: str):
-        self.username = username
-        self.password = password
-
-
 class AuthService:
     def __init__(self, session: AsyncSession, user_manager: UserManager):
         self.session = session
@@ -29,7 +20,7 @@ class AuthService:
 
     async def login(self, email: str, password: str) -> User:
         user = await self.user_manager.authenticate(
-            credentials=_Credentials(email, password)
+            credentials=OAuth2PasswordRequestForm(username=email, password=password)
         )
         if user is None or not user.is_active:
             raise InvalidCredentialsError()
@@ -41,7 +32,7 @@ class AuthService:
             if not name:
                 raise UsernameEmptyError()
             existing = await self.session.scalar(
-                select(User).where(User.username == name, User.id != user.id)
+                select(User).where(User.username == name, User.id != user.id)  # type: ignore[arg-type]
             )
             if existing:
                 raise UsernameTakenError()
@@ -54,7 +45,7 @@ class AuthService:
         self, user: User, current_password: str, new_password: str
     ) -> None:
         authenticated = await self.user_manager.authenticate(
-            _Credentials(user.email, current_password)
+            OAuth2PasswordRequestForm(username=user.email, password=current_password)
         )
         if authenticated is None:
             raise IncorrectPasswordError()
@@ -66,7 +57,7 @@ class AuthService:
             select(User).where(User.username == username)
         )
         email_result = await self.session.execute(
-            select(User).where(User.email == email)
+            select(User).where(User.email == email)  # type: ignore[arg-type]
         )
         return (
             username_result.scalar_one_or_none() is not None,

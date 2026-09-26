@@ -1,5 +1,5 @@
 import uuid
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator, Optional, TypeVar
 
 from fastapi import Depends, Request, Response
 from fastapi_users import BaseUserManager, FastAPIUsers, UUIDIDMixin
@@ -70,6 +70,9 @@ async def get_user_manager(
     yield UserManager(user_db)
 
 
+# Keeps RedirectResponse a RedirectResponse for the OAuth callback.
+_R = TypeVar("_R", bound=Response)
+
 TOKEN_LIFETIME_SECONDS = 3600
 
 # The JWT travels only in an httpOnly cookie: JavaScript can't read it, so an
@@ -88,7 +91,7 @@ cookie_transport = CookieTransport(
 )
 
 
-def set_access_cookie(response: Response, token: str) -> Response:
+def set_access_cookie(response: _R, token: str) -> _R:
     """Attach the session cookie to any response (login, OAuth redirect)."""
     response.set_cookie(
         key=cookie_transport.cookie_name,
@@ -103,7 +106,7 @@ def set_access_cookie(response: Response, token: str) -> Response:
     return response
 
 
-def clear_access_cookie(response: Response) -> Response:
+def clear_access_cookie(response: _R) -> _R:
     response.set_cookie(
         key=cookie_transport.cookie_name,
         value="",

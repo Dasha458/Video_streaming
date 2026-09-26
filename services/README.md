@@ -11,8 +11,3 @@ allows for independent scaling, development, and deployment of different parts o
       the message, downloads the video from MinIO, transcodes it into different resolutions (e.g., HLS format) using
       FFmpeg, and uploads the results back to MinIO. It is designed to run on GPU-enabled hardware for accelerated
       performance.
-
-- **`/moderation`**:
-    - **Purpose**: Handles content moderation tasks.
-    - **Description**: This service will be responsible for scanning uploaded content for policy violations, managing
-      reports, and taking automated or manual moderation actions.

@@ -1,5 +1,5 @@
 import uuid
-from typing import Type
+from typing import Any, Type
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -35,7 +35,9 @@ async def toggle_reaction(
         target_model.user_id == user_id,
         target_field == target_id,
     )
-    existing = await session.scalar(stmt)
+    # mypy infers `object` from select() over a Type[A] | Type[B] union; the
+    # row is whichever reaction model the caller passed.
+    existing: Any = await session.scalar(stmt)
 
     if existing is not None:
         if existing.reaction_type_id == reaction_type_id:
@@ -72,7 +74,7 @@ async def toggle_reaction(
     # Video/Comment carry denormalized likes_count/dislikes_count for cheap
     # reads (feed cards, analytics) -- keep them in sync with the reaction
     # rows that are the source of truth.
-    parent = await session.get(parent_model, target_id)
+    parent: Any = await session.get(parent_model, target_id)
     if parent is not None:
         parent.likes_count = counts.get("like", 0)
         parent.dislikes_count = counts.get("dislike", 0)

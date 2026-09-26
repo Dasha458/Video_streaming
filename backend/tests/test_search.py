@@ -69,7 +69,7 @@ class TestVideoHintsEndpoint:
 
 
 class TestVideoSearchEndpoint:
-    """POST /api/search/video — hybrid search."""
+    """POST /api/search/video — full-text search."""
 
     def _make_hit(self, title="Test Video"):
         return {
@@ -307,25 +307,13 @@ class TestElasticsearchCallContract:
     runtime. These bind the arguments the service passes against the real
     client signature -- the mocked tests above cannot catch a rename."""
 
-    def test_hybrid_search_kwargs_match_the_client_signature(self):
+    def test_video_search_kwargs_match_the_client_signature(self):
         import inspect
 
         from elasticsearch import AsyncElasticsearch
 
         inspect.signature(AsyncElasticsearch.search).bind(
-            None,
-            index="videos",
-            knn={
-                "field": "video_embedding",
-                "query_vector": [0.1],
-                "k": 10,
-                "num_candidates": 100,
-            },
-            source=["id", "name"],
-            query={"match_all": {}},
-            rank={"rrf": {}},
-            size=10,
-            from_=0,
+            None, index="videos", query={"match_all": {}}, size=10, from_=0
         )
 
     def test_hint_search_kwargs_match_the_client_signature(self):

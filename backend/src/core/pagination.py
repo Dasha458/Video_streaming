@@ -1,4 +1,4 @@
-from typing import Any, Callable, List, Optional, Tuple, Type, TypeVar
+from typing import Any, Callable, List, Optional, Tuple, Type, TypeVar, cast
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -54,8 +54,11 @@ async def paginate_query(
     stmt = stmt.offset((page - 1) * size).limit(size)
     result = await session.execute(stmt)
     raw_items = list(result.scalars().all())
-    if mapper is not None:
-        items: List[U] = [mapper(v) for v in raw_items]
-    else:
-        items = raw_items
+    # Without a mapper the caller asked for the model rows themselves, so
+    # U is T; mypy cannot express that relationship in one signature.
+    items: List[U] = (
+        [mapper(v) for v in raw_items]
+        if mapper is not None
+        else cast(List[U], raw_items)
+    )
     return items, total

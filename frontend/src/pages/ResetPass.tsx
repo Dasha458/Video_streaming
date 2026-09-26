@@ -1,3 +1,11 @@
+/**
+ * NOT ROUTED. Password reset is disabled in the UI: fastapi-users issues a
+ * valid token and /api/auth/forgot-password answers 202, but no email
+ * provider is configured, so the mail never arrives and the user waits for
+ * something that will not happen. The page is kept so the flow can be
+ * restored in one commit once email delivery exists -- re-add the routes in
+ * AppRouter.tsx and the link in login-form.tsx.
+ */
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {

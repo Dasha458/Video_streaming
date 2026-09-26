@@ -16,7 +16,13 @@ from src.errors.videos import (
 )
 from src.models import Category, Channel, PrivacyStatus, Video, VideoReaction, VideoView
 from src.models.watch_history import WatchHistory
-from src.schemas.video import VideoCategory, map_video_to_playback, to_video_preview
+from src.schemas.video import (
+    VideoCategory,
+    VideoPlayback,
+    VideoPreview,
+    map_video_to_playback,
+    to_video_preview,
+)
 from src.services.reactions import toggle_reaction
 
 
@@ -29,7 +35,7 @@ class VideoService:
         video_id: UUID,
         user_id: UUID | None,
         source_type: str | None = None,
-    ):
+    ) -> VideoPlayback:
         video = await self._get_video_with_details(video_id)
 
         if user_id:
@@ -44,7 +50,7 @@ class VideoService:
         size: int,
         category: str | None = None,
         channel_name: str | None = None,
-    ):
+    ) -> Tuple[List[VideoPreview], int]:
         """
         Retrieves public, ready videos. Optionally filters by category and/or channel name.
         """

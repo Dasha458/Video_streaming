@@ -2,7 +2,6 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { lazy, Suspense } from "react";
 import Loading from "@/pages/Loading";
 import AppLayout from "@/layouts/AppLayout";
-import ForgotPass from "@/pages/ForgotPass";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 
 const Home = lazy(() => import("@/pages/Home"));
@@ -15,7 +14,6 @@ const Register = lazy(() => import("@/pages/Register"));
 const Changelog = lazy(() => import("@/pages/Changelog"));
 const Pricing = lazy(() => import("@/pages/Pricing"));
 const NotFound = lazy(() => import("@/pages/NotFound"));
-const ResetPass = lazy(() => import("@/pages/ResetPass"));
 const Liked = lazy(() => import("@/pages/Liked"));
 const History = lazy(() => import("@/pages/History"));
 const WatchLater = lazy(() => import("@/pages/WatchLater"));
@@ -56,8 +54,8 @@ export default function AppRouter() {
                 <Route path="/channel/:channel_name" element={<Channel />} />
                 </Route>
 
-                <Route path="/reset-password" element={<ResetPass />} />
-                <Route path="/forgotpass" element={<ForgotPass />} />
+                {/* /forgotpass and /reset-password are unrouted while password
+                    reset has no email provider -- see ForgotPass.tsx. */}
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
                 <Route path="/loading" element={<Loading />} />

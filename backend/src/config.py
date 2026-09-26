@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import List, Optional
+from typing import List
 
 from pydantic import Field, computed_field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -16,12 +16,16 @@ class BaseAppSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file_encoding="utf-8")
 
 
+# Every field below is required: the application cannot run without it, and
+# declaring them Optional only meant a missing Vault key surfaced later as a
+# confusing connection error (and left every use of them unchecked by mypy).
+# Required means pydantic names the missing key at startup instead.
 class DatabaseSettings(BaseAppSettings):
-    POSTGRES_HOST: Optional[str] = Field(default=None)
-    POSTGRES_PORT: Optional[str] = Field(default=None)
-    POSTGRES_DB: Optional[str] = Field(default=None)
-    POSTGRES_USER: Optional[str] = Field(default=None)
-    POSTGRES_PASSWORD: Optional[str] = Field(default=None)
+    POSTGRES_HOST: str
+    POSTGRES_PORT: str
+    POSTGRES_DB: str
+    POSTGRES_USER: str
+    POSTGRES_PASSWORD: str
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -33,16 +37,16 @@ class DatabaseSettings(BaseAppSettings):
 
 
 class S3Settings(BaseAppSettings):
-    MINIO_ROOT_USER: Optional[str] = Field(default=None)
-    MINIO_ROOT_PASSWORD: Optional[str] = Field(default=None)
-    MINIO_ENDPOINT_URL: Optional[str] = Field(default=None)
-    MINIO_REGION_NAME: Optional[str] = Field(default=None)
-    BUCKET_NAMES: Optional[List[str]] = Field(default=None)
+    MINIO_ROOT_USER: str
+    MINIO_ROOT_PASSWORD: str
+    MINIO_ENDPOINT_URL: str
+    MINIO_REGION_NAME: str
+    BUCKET_NAMES: List[str]
 
 
 class ElasticSettings(BaseAppSettings):
-    ELASTIC_HOST: Optional[str] = Field(default=None)
-    ELASTIC_PASSWORD: Optional[str] = Field(default=None)
+    ELASTIC_HOST: str
+    ELASTIC_PASSWORD: str
 
 
 class JWTSettings(BaseAppSettings):
@@ -69,15 +73,15 @@ class GitHubOAuthSettings(BaseAppSettings):
 
 
 class RedisSettings(BaseAppSettings):
-    REDIS_HOST: Optional[str] = Field(default=None)
-    REDIS_PORT: Optional[int] = Field(default=None)
+    REDIS_HOST: str
+    REDIS_PORT: int
 
 
 class RABBITMQSettings(BaseAppSettings):
-    RABBITMQ_HOST: Optional[str] = Field(default=None)
-    RABBITMQ_PORT: Optional[str] = Field(default=None)
-    RABBITMQ_USER: Optional[str] = Field(default=None)
-    RABBITMQ_PASSWORD: Optional[str] = Field(default=None)
+    RABBITMQ_HOST: str
+    RABBITMQ_PORT: str
+    RABBITMQ_USER: str
+    RABBITMQ_PASSWORD: str
 
     @computed_field  # type: ignore[prop-decorator]
     @property

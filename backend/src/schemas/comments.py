@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Generic, List, Optional, TypeVar
+from typing import Any, Generic, List, Optional, TypeVar
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -35,7 +35,7 @@ CommentRead.model_rebuild()
 def to_comment_read(c: Comment) -> CommentRead:
     # Only iterate replies if already eagerly loaded — accessing an unloaded
     # lazy relationship inside an async session raises MissingGreenlet.
-    state = sa_inspect(c)
+    state: Any = sa_inspect(c)
     loaded_replies = (
         [to_comment_read(r) for r in c.replies]
         if "replies" not in state.unloaded

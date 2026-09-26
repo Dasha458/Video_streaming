@@ -1,6 +1,6 @@
 import logging
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Awaitable, cast
 
 from fastapi import FastAPI
 from prometheus_client import Info
@@ -43,7 +43,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     logging.info("Startup complete. Metrics exposed.")
 
     redis = get_redis()
-    await redis.ping()
+    # redis-py types commands as `Awaitable[T] | T`; on the async client it is
+    # always the awaitable branch.
+    await cast(Awaitable[bool], redis.ping())
     print("Redis connected successfully.")
 
     logging.info("🚀 Startup complete. Background tasks running.")

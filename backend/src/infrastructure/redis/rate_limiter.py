@@ -1,6 +1,6 @@
 import random
 import time
-from typing import Optional
+from typing import Any, Awaitable, Optional, cast
 
 from cachetools import TTLCache
 from redis.asyncio import Redis
@@ -20,7 +20,7 @@ class RateLimiter:
 
     def __init__(self, redis: Redis):
         self._redis = redis
-        self._lua_sha = None
+        self._lua_sha: Optional[str] = None
         # Stores up to 10,000 blocked IPs.
         # Items expire automatically based on the 'window_seconds'
         self._local_block_cache: TTLCache = TTLCache(
@@ -28,9 +28,14 @@ class RateLimiter:
             ttl=60,
         )
 
-    async def _get_script_sha(self) -> Optional[str]:
+    async def _get_script_sha(self) -> str:
+        # redis-py types every command as `Awaitable[T] | T` because the async
+        # client reuses the sync class; on Redis.asyncio it is always the
+        # awaitable branch.
         if self._lua_sha is None:
-            self._lua_sha = await self._redis.script_load(self.LUA_SCRIPT)
+            self._lua_sha = await cast(
+                Awaitable[str], self._redis.script_load(self.LUA_SCRIPT)
+            )
         return self._lua_sha
 
     async def is_limited(
@@ -51,15 +56,18 @@ class RateLimiter:
         window_start_ms = current_ms - (window_seconds * 1000)
         member_id = f"{current_ms}-{random.randint(0, 100000)}"
 
-        is_blocked_in_redis = await self._redis.evalsha(
-            sha,
-            1,
-            f"rate_limit:{cache_key}",  # Redis Key
-            current_ms,
-            window_start_ms,
-            max_requests,
-            window_seconds,
-            member_id,
+        is_blocked_in_redis = await cast(
+            Awaitable[Any],
+            self._redis.evalsha(
+                sha,
+                1,
+                f"rate_limit:{cache_key}",  # Redis Key
+                current_ms,
+                window_start_ms,
+                max_requests,
+                window_seconds,
+                member_id,
+            ),
         )
 
         if is_blocked_in_redis == 1:

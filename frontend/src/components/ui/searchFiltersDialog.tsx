@@ -38,7 +38,6 @@ export function SearchFiltersDialog() {
     });
 
     const [includeDescription, setIncludeDescription] = useState(searchFilters?.includeDescription || false);
-    const [smartSearch, setSmartSearch] = useState(searchFilters?.smartSearch || false);
 
     const { categories, active, setActive } = useFetchCategories();
 
@@ -50,14 +49,13 @@ export function SearchFiltersDialog() {
             minViews: viewRange[0],
             maxViews: maxViewsValue,
             includeDescription: includeDescription,
-            smartSearch: smartSearch
         };
 
         setSearchFilters(filters);
         runSearch(searchQuery, filters);
         setOpen(false);
 
-    }, [active, viewRange, includeDescription, smartSearch, runSearch, searchQuery, setSearchFilters]);
+    }, [active, viewRange, includeDescription, runSearch, searchQuery, setSearchFilters]);
 
     const formatNumber = (num: number) => {
         if (num >= 1000000) return (num / 1000000).toFixed(0) + 'M';
@@ -89,14 +87,6 @@ export function SearchFiltersDialog() {
                             onCheckedChange={(checked) => setIncludeDescription(!!checked)}
                         />
                         <Label htmlFor="has-description">Has description</Label>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                        <Checkbox
-                            id="smartSearch"
-                            checked={smartSearch}
-                            onCheckedChange={(checked) => setSmartSearch(!!checked)}
-                        />
-                        <Label htmlFor="smartSearch">Smart Search (AI)</Label>
                     </div>
                 </div>
 

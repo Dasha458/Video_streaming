@@ -1,4 +1,4 @@
-from typing import Any, List, Optional
+from typing import Any, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -58,17 +58,6 @@ class VideoIndexMapping:
                 "preserve_position_increments": True,
                 "max_input_length": 50,
             },
-            # add ranker
-            # https://github.com/elastic/elasticsearch-labs/blob/main/notebooks/search/08-learning-to-rank.ipynb
-            # vector field for hybrid search
-            # set 'dims' to embedding model's dimensions
-            # (e.g., 768 for SBERT, 1536 for OpenAI).
-            # "video_embedding": {
-            #     "type": "dense_vector",
-            #     "dims": 768,  # <-- CHANGE ME
-            #     "index": "true",
-            #     "similarity": "cosine" # or 'dot_product' / 'l2_norm'
-            # }
         }
     }
 
@@ -127,12 +116,6 @@ class VideoSearchRequest(BaseModel):
         le=10_000,
         description="Number of results to skip, for paginating through matches.",
     )
-    smart_search: bool = Field(False, description="Enable hybrid vector + text search.")
-
-    query_vector: Optional[List[float]] = Field(
-        None, description="Vector embedding for semantic search."
-    )
-
     category: Optional[str] = Field(None, description="Filter by category name.")
     min_views: Optional[int] = Field(None, ge=0, description="Minimum number of views.")
     max_views: Optional[int] = Field(None, ge=0, description="Maximum number of views.")

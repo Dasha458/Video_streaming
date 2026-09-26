@@ -34,5 +34,5 @@ RESPONSES_TOTAL = Counter(
 VIDEO_SEARCH_TOTAL = Counter(
     "video_search_requests_total",
     "Total video search requests",
-    ["smart_search", "category"],  #  "app_name"
+    ["category"],  #  "app_name"
 )

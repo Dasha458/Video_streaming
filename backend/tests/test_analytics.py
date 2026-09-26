@@ -13,7 +13,7 @@ def _delta(value: int, previous: int = 0):
 
 
 def _make_overview():
-    from src.schemas.analytics import OverviewResponse
+    from src.schemas.analytics import DailyMetric, OverviewResponse
 
     return OverviewResponse(
         period="28d",
@@ -22,7 +22,7 @@ def _make_overview():
         total_likes=_delta(200),
         total_comments=_delta(30),
         total_watch_time_seconds=_delta(0),
-        views_per_day=[{"date": "2025-01-01", "count": 100}],
+        views_per_day=[DailyMetric(date="2025-01-01", count=100)],
         top_videos=[],
     )
 

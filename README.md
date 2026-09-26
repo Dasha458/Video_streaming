@@ -191,8 +191,7 @@ Video_streaming/
 │   │   └── lib/api/         # Axios API-клієнти + доменні типи
 │   └── tests/               # Vitest + Testing Library
 ├── services/
-│   ├── convertor/           # FFmpeg мікросервіс транскодування (RabbitMQ-консюмер)
-│   └── moderation/          # НЕ РЕАЛІЗОВАНО: заглушка без Dockerfile, не в compose
+│   └── convertor/           # FFmpeg мікросервіс транскодування (RabbitMQ-консюмер)
 ├── gateway/
 │   ├── nginx.conf           # Прод: SPA, /api (rate limit), підписані /minio/<bucket>; лише HTTP, без TLS
 │   ├── security-headers.conf # CSP/HSTS/nosniff… (include)
