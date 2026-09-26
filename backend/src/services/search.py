@@ -46,12 +46,10 @@ class SearchService:
     async def search_video(
         self,
         query: str,
-        query_vector: Optional[List[float]] = None,
         category: Optional[str] = None,
         min_views: Optional[int] = None,
         max_views: Optional[int] = None,
         limit: int = 10,
-        smart_search: bool = False,
         has_description: bool = False,
         offset: int = 0,
     ) -> dict:
@@ -81,42 +79,12 @@ class SearchService:
 
             text_query = {"bool": {"must": [must_query], "filter": filters}}
 
-            # ─── Text-only search ───────────────────────────────────────
-            if not smart_search or not query_vector:
-                result = await self.es.search(
-                    index="videos", query=text_query, size=limit, from_=offset
-                )
-                return {
-                    "hits": [
-                        {"id": hit["_id"], **hit["_source"], "score": hit.get("_score")}
-                        for hit in result["hits"]["hits"]
-                    ],
-                    "total": self._total_hits(result),
-                }
-
-            # ─── Hybrid vector + text search ────────────────────────────
-            # knn's `k` has to cover everything up to the end of the requested
-            # page, since `from_` pages into that same candidate set.
             result = await self.es.search(
-                index="videos",
-                knn={
-                    "field": "video_embedding",
-                    "query_vector": query_vector,
-                    "k": offset + limit,
-                    "num_candidates": max(100, offset + limit),
-                },
-                # elasticsearch-py 8+ renamed this parameter to `source`;
-                # `_source` is not accepted and search() takes no **kwargs.
-                source=["id", "name", "description", "views", "category"],
-                query=text_query,
-                rank={"rrf": {}},
-                size=limit,
-                from_=offset,
+                index="videos", query=text_query, size=limit, from_=offset
             )
-
             return {
                 "hits": [
-                    {**hit["_source"], "score": hit.get("_score")}
+                    {"id": hit["_id"], **hit["_source"], "score": hit.get("_score")}
                     for hit in result["hits"]["hits"]
                 ],
                 "total": self._total_hits(result),

@@ -76,7 +76,6 @@ export const search = async (
     category: filters?.category === "All" ? undefined : filters?.category,
     min_views: filters?.minViews,
     max_views: filters?.maxViews,
-    smart_search: filters?.smartSearch ?? false,
     has_description: filters?.includeDescription ?? false,
   };
 

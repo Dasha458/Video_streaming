@@ -57,9 +57,9 @@ async def get_hints(
 @router_search.post(
     "/video",
     response_model=VideoSearchResponse,
-    summary="Hybrid video search",
+    summary="Video search",
     description="""
-    Performs full-text or hybrid (text + vector) video search.
+    Performs full-text video search.
 
     - Uses `multi_match` query for text relevance (title, description, category).
     - Optionally uses vector embeddings for semantic similarity.
@@ -80,20 +80,14 @@ async def video_search(
     payload: VideoSearchRequest,
     service: SearchService = Depends(get_search_service),
 ) -> VideoSearchResponse:
-    """
-    Hybrid search endpoint:
-    - Plain text search if `smart_search=False`
-    - Hybrid text + vector search if `smart_search=True` and `query_vector` is provided
-    """
+    """Full-text video search over the Elasticsearch index."""
 
     result = await service.search_video(
         payload.query,
-        payload.query_vector,
         payload.category,
         payload.min_views,
         payload.max_views,
         payload.limit,
-        payload.smart_search,
         payload.has_description,
         payload.offset,
     )

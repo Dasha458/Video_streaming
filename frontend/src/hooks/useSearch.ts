@@ -35,13 +35,12 @@ function filtersFromParams(params: URLSearchParams): SearchFilters | undefined {
     const category = params.get("category") || undefined;
     const minViews = params.get("min_views") ? Number(params.get("min_views")) : undefined;
     const maxViews = params.get("max_views") ? Number(params.get("max_views")) : undefined;
-    const smartSearch = params.get("smart_search") === "true";
     const includeDescription = params.get("has_description") === "true";
 
-    if (!category && !minViews && !maxViews && !smartSearch && !includeDescription) {
+    if (!category && !minViews && !maxViews && !includeDescription) {
         return undefined;
     }
-    return { category, minViews, maxViews, smartSearch, includeDescription };
+    return { category, minViews, maxViews, includeDescription };
 }
 
 interface UseSearchOptions {
@@ -77,7 +76,6 @@ export function useSearch({ enabled = false }: UseSearchOptions = {}): UseSearch
                     urlParams.set("category", filters.category);
                 if (filters.minViews) urlParams.set("min_views", filters.minViews.toString());
                 if (filters.maxViews) urlParams.set("max_views", filters.maxViews.toString());
-                if (filters.smartSearch) urlParams.set("smart_search", "true");
                 if (filters.includeDescription) urlParams.set("has_description", "true");
             }
 

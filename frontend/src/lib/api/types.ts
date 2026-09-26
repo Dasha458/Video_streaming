@@ -215,7 +215,6 @@ export interface SearchFilters {
   minViews?: number; // Minimum view count
   maxViews?: number; // Maximum view count
   includeDescription: boolean; // Also match the video description, not just the title
-  smartSearch: boolean;
 }
 
 export interface SearchResponse {
