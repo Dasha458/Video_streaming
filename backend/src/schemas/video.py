@@ -139,7 +139,10 @@ def map_video_to_playback(video: Video, resolutions: list[str]) -> VideoPlayback
         channel_name=video.channel.name,
         likes_count=video.likes_count,
         dislikes_count=video.dislikes_count,
-        views_count=video.views_count + 1,
+        # Not +1. A view is one viewer, so a returning visitor adds
+        # nothing, and the optimistic increment was a number that went back
+        # down on the next page load.
+        views_count=video.views_count,
         thumbnail_url=video.thumbnail_path,
         avatar_url=video.channel.avatar_path,
     )

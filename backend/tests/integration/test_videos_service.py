@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.status_ids import PRIVACY_PRIVATE_ID, STATUS_PROCESSING_ID
 from src.errors.videos import VideoNotFoundError
-from src.models import VideoView
+from src.models import Video, VideoView
 from src.services.videos import VideoService
 from tests.integration.conftest import make_channel, make_user, make_video
 
@@ -27,6 +27,13 @@ async def _views(session: AsyncSession, video_id) -> int:
             select(func.count(VideoView.id)).where(VideoView.video_id == video_id)
         )
         or 0
+    )
+
+
+async def _views_count(session: AsyncSession, video_id) -> int:
+    """The denormalised counter, which must agree with the rows."""
+    return int(
+        await session.scalar(select(Video.views_count).where(Video.id == video_id)) or 0
     )
 
 
@@ -70,24 +77,54 @@ async def test_a_video_still_encoding_is_not_playable_by_others(
 
 
 @pytest.mark.asyncio
-async def test_anonymous_views_are_recorded_and_not_deduplicated(
-    session: AsyncSession,
-):
-    """The partial unique index is scoped WHERE user_id IS NOT NULL.
+async def test_the_same_signed_out_viewer_is_counted_once(session: AsyncSession):
+    """A view is one viewer, not one page load.
 
-    Anonymous views used to be dropped before they reached the database at
-    all, which is why traffic sources and real-time never saw a signed-out
-    viewer.
+    Signed-out visits used to be dropped before they reached the database
+    at all; counting them raw would have made "views" mean neither unique
+    viewers nor hits.
     """
     owner = await make_user(session)
     channel = await make_channel(session, owner)
     video = await make_video(session, channel)
 
     service = VideoService(session)
-    await service.get_playback(video.id, user_id=None, source_type="search")
-    await service.get_playback(video.id, user_id=None, source_type="search")
+    for _ in range(3):
+        await service.get_playback(
+            video.id, user_id=None, source_type="search", viewer_key="anon:same"
+        )
 
-    assert await _views(session, video.id) == 2
+    assert await _views(session, video.id) == 1
+    assert await _views_count(session, video.id) == 1
+
+
+@pytest.mark.asyncio
+async def test_different_signed_out_viewers_are_counted_separately(
+    session: AsyncSession,
+):
+    owner = await make_user(session)
+    channel = await make_channel(session, owner)
+    video = await make_video(session, channel)
+
+    service = VideoService(session)
+    await service.get_playback(video.id, user_id=None, viewer_key="anon:one")
+    await service.get_playback(video.id, user_id=None, viewer_key="anon:two")
+    await service.get_playback(video.id, user_id=None, viewer_key="fp:abc123")
+
+    assert await _views(session, video.id) == 3
+    assert await _views_count(session, video.id) == 3
+
+
+@pytest.mark.asyncio
+async def test_a_visit_with_no_viewer_records_nothing(session: AsyncSession):
+    """Without an identity there is no viewer to count, so we do not guess."""
+    owner = await make_user(session)
+    channel = await make_channel(session, owner)
+    video = await make_video(session, channel)
+
+    await VideoService(session).get_playback(video.id, user_id=None)
+
+    assert await _views(session, video.id) == 0
 
 
 @pytest.mark.asyncio
@@ -98,10 +135,12 @@ async def test_a_signed_in_viewer_is_counted_once(session: AsyncSession):
     video = await make_video(session, channel)
 
     service = VideoService(session)
-    await service.get_playback(video.id, user_id=viewer.id)
-    await service.get_playback(video.id, user_id=viewer.id)
+    key = f"user:{viewer.id}"
+    await service.get_playback(video.id, user_id=viewer.id, viewer_key=key)
+    await service.get_playback(video.id, user_id=viewer.id, viewer_key=key)
 
     assert await _views(session, video.id) == 1
+    assert await _views_count(session, video.id) == 1
 
 
 @pytest.mark.asyncio
@@ -113,18 +152,21 @@ async def test_traffic_source_is_filled_in_on_a_later_visit(session: AsyncSessio
     video = await make_video(session, channel)
 
     service = VideoService(session)
-    await service.get_playback(video.id, user_id=viewer.id)  # no source known yet
+    key = f"user:{viewer.id}"
+    await service.get_playback(video.id, user_id=viewer.id, viewer_key=key)
     stored = await session.scalar(
         select(VideoView.source_type).where(
-            VideoView.video_id == video.id, VideoView.user_id == viewer.id
+            VideoView.video_id == video.id, VideoView.viewer_key == key
         )
     )
     assert stored == "unknown"
 
-    await service.get_playback(video.id, user_id=viewer.id, source_type="playlist")
+    await service.get_playback(
+        video.id, user_id=viewer.id, source_type="playlist", viewer_key=key
+    )
     stored = await session.scalar(
         select(VideoView.source_type).where(
-            VideoView.video_id == video.id, VideoView.user_id == viewer.id
+            VideoView.video_id == video.id, VideoView.viewer_key == key
         )
     )
     assert stored == "playlist"

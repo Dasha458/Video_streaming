@@ -1,5 +1,6 @@
 ﻿import { AxiosError } from "axios";
 import clientApi from "./clientApi";
+import { getVisitorId, VISITOR_HEADER } from "@/lib/visitorId";
 import { timeAgo } from "@/utils/timeAgo";
 import type {
   Video,
@@ -107,6 +108,10 @@ export const getVideos = async ({
 export const getVideo = async (id: string, source?: string): Promise<Video> => {
   const res = await clientApi.get<RawVideoPlayback>(`/api/videos/${id}`, {
     params: source ? { source } : undefined,
+    // This request is what records a view, and a view is one viewer, so it
+    // has to say which viewer. Signed-in callers are identified by their
+    // session; this covers everyone else.
+    headers: { [VISITOR_HEADER]: getVisitorId() },
   });
   return mapToDetail(res.data);
 };

@@ -1,7 +1,16 @@
 from typing import TYPE_CHECKING, Annotated, List
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Path, Query, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Path,
+    Query,
+    Request,
+    Response,
+    status,
+)
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from src.api.dependencies.services import get_stream_service, get_video_service
@@ -21,6 +30,7 @@ from src.schemas.video import (
 from src.services.dependencies import get_current_user_id, get_optional_user_id
 from src.services.streaming import StreamService
 from src.services.videos import VideoService
+from src.services.viewer_identity import viewer_key
 
 if TYPE_CHECKING:
     from elasticsearch import AsyncElasticsearch
@@ -183,6 +193,7 @@ async def get_categories(
     },
 )
 async def get_video_info(
+    request: Request,
     video_id: UUID = Path(
         ..., description="UUID of the video to retrieve playback info for."
     ),
@@ -199,7 +210,11 @@ async def get_video_info(
     service: VideoService = Depends(get_video_service),
 ) -> VideoPlayback:
     return await service.get_playback(
-        video_id=video_id, user_id=user_id, source_type=source
+        video_id=video_id,
+        user_id=user_id,
+        source_type=source,
+        # A view is one viewer, so the request has to say which viewer.
+        viewer_key=viewer_key(request, user_id),
     )
 
 
