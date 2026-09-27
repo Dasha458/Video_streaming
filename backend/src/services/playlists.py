@@ -51,7 +51,7 @@ class PlaylistService:
     async def get_detail(
         self, user_id: UUID, playlist_id: UUID
     ) -> PlaylistDetailResponse:
-        playlist = await self._get_owned(user_id, playlist_id)
+        playlist = await self._get_owned(user_id, playlist_id, with_video_details=True)
         previews = [to_video_preview(v) for v in playlist.videos]
         return PlaylistDetailResponse(
             id=playlist.id,
@@ -87,16 +87,28 @@ class PlaylistService:
         playlist.videos.remove(video)
         await self.session.commit()
 
-    async def _get_owned(self, user_id: UUID, playlist_id: UUID) -> Playlist:
-        playlist = await self.session.scalar(
-            select(Playlist)
-            .where(Playlist.id == playlist_id)
-            .options(
+    async def _get_owned(
+        self, user_id: UUID, playlist_id: UUID, *, with_video_details: bool = False
+    ) -> Playlist:
+        """Fetch a playlist the caller owns.
+
+        ``with_video_details`` pulls in everything needed to render the
+        videos. It used to be unconditional, so deleting a playlist or
+        adding one video loaded every video in it together with its
+        channel, privacy and resolution rows -- four extra queries to
+        answer a question that never looked at them.
+        """
+        stmt = select(Playlist).where(Playlist.id == playlist_id)
+        if with_video_details:
+            stmt = stmt.options(
                 selectinload(Playlist.videos).selectinload(Video.channel),
                 selectinload(Playlist.videos).selectinload(Video.privacy),
                 selectinload(Playlist.videos).selectinload(Video.resolutions),
             )
-        )
+        else:
+            stmt = stmt.options(selectinload(Playlist.videos))
+
+        playlist = await self.session.scalar(stmt)
         if not playlist:
             raise PlaylistNotFoundError()
         if playlist.user_id != user_id:

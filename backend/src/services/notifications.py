@@ -60,22 +60,3 @@ class NotificationService:
             .values(is_read=True)
         )
         await self.session.commit()
-
-    @classmethod
-    async def create_notification(
-        cls,
-        session: AsyncSession,
-        user_id: UUID,
-        content: str,
-        link: str,
-        notification_type: str | None = None,
-    ) -> None:
-        session.add(
-            Notification(
-                user_id=user_id,
-                content=content,
-                link=link,
-                notification_type=notification_type,
-            )
-        )
-        await session.commit()
