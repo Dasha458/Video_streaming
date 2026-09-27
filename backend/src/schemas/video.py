@@ -193,3 +193,12 @@ class VideoDownloadQuery(BaseModel):
         description="Specific resolution to download (e.g., '360p', '720p', '1080p'). "
         "If omitted, original file is returned.",
     )
+
+
+class StreamUrlResponse(BaseModel):
+    """Where the player should load this video from, and for how long."""
+
+    url: str = Field(..., description="Gateway path of the HLS master playlist.")
+    expires_in: int = Field(
+        ..., description="Seconds the signatures behind this URL stay valid."
+    )

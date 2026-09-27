@@ -111,6 +111,22 @@ export const getVideo = async (id: string, source?: string): Promise<Video> => {
   return mapToDetail(res.data);
 };
 
+export interface StreamUrl {
+  url: string;
+  expires_in: number;
+}
+
+/** Where the player should load this video from.
+ *
+ *  The server checks the video's privacy against the caller before
+ *  answering, and refuses with a 404 when they may not watch it. This is
+ *  the only way to obtain a media URL: the endpoint that used to sign any
+ *  path it was handed is gone. */
+export const getStreamUrl = (videoId: string): Promise<StreamUrl> =>
+  clientApi
+    .get<StreamUrl>(`/api/videos/${videoId}/stream-url`)
+    .then((res) => res.data);
+
 export const getVideoPreviewsByCategory = async (
   category: string,
   page = 1,
@@ -205,6 +221,7 @@ export const downloadVideo = async (
 export default {
   getVideos,
   getVideo,
+  getStreamUrl,
   uploadVideo,
   updateVideoPrivacy,
   deleteVideo,

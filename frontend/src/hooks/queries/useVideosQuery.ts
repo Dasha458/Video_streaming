@@ -1,5 +1,10 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { getVideo, getVideos, getVideoPreviewsByCategory } from "@api/videoApi";
+import {
+    getStreamUrl,
+    getVideo,
+    getVideos,
+    getVideoPreviewsByCategory,
+} from "@api/videoApi";
 import { inferSource } from "@/lib/trafficSource";
 import { timeAgo } from "@/utils/timeAgo";
 import type { VideoDetail, VideoPreviewWithTime } from "@api/types";
@@ -105,4 +110,21 @@ export function useVideoQuery(videoId: string | undefined) {
         error: query.error ? "Video not found" : null,
         isLoading: query.isLoading,
     };
+}
+
+/** The video's playable URL, from the endpoint that checks privacy.
+ *
+ * Kept apart from useVideoQuery so the player's source has its own cache
+ * entry and its own retry. It is the one thing that must not be sourced
+ * from anywhere else: the server authorises this URL and nothing else.
+ */
+export function useStreamUrlQuery(videoId: string | undefined) {
+    const query = useQuery({
+        queryKey: ["stream-url", videoId],
+        queryFn: () => getStreamUrl(videoId!),
+        enabled: Boolean(videoId),
+        staleTime: 5 * 60 * 1000,
+    });
+
+    return { streamUrl: query.data?.url ?? "", isLoadingStreamUrl: query.isLoading };
 }

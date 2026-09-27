@@ -10,6 +10,22 @@ class InvalidFilePathError(AppError):
         super().__init__(_("Invalid file path format"))
 
 
+class MediaAccessDeniedError(AppError):
+    """One answer for every reason the gateway may not sign an object.
+
+    403 rather than 404 because the gateway's auth subrequest only
+    understands 401 and 403 as a refusal -- anything else it reports to
+    the viewer as an internal error. Refusals are not distinguished from
+    each other, so the status does not reveal whether the object exists.
+    """
+
+    code = "MEDIA_ACCESS_DENIED"
+    status_code = 403
+
+    def __init__(self) -> None:
+        super().__init__(_("Not allowed to access this media"))
+
+
 class FileNotFoundS3Error(AppError):
     code = "FILE_NOT_FOUND"
     status_code = 404
