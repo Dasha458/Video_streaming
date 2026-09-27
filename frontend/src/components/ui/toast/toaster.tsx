@@ -18,7 +18,7 @@ export function Toaster() {
                             animate={{ opacity: 1, y: 0, scale: 1 }}
                             exit={{ opacity: 0, scale: 0.9 }}
                         >
-                            <Toast>
+                            <Toast variant={toast.variant}>
                                 <div className="grid gap-1">
                                     {toast.title && <ToastTitle>{toast.title}</ToastTitle>}
                                     {toast.description && <ToastDescription>{toast.description}</ToastDescription>}
