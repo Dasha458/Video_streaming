@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 import { toast } from "@/components/ui/toast/use-toast";
 
 /**
@@ -26,7 +26,9 @@ export default function GitHubCallback() {
                 navigate("/login", { replace: true });
             }
         });
-    }, []);
+        // The ref guard above is what makes running once correct; the deps
+        // are listed honestly rather than suppressed with an empty array.
+    }, [navigate, refreshUser]);
 
     return (
         <div className="flex min-h-screen items-center justify-center">

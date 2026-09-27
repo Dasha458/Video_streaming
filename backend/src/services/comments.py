@@ -12,8 +12,9 @@ from src.errors.comments import (
     ParentCommentVideoMismatchError,
 )
 from src.errors.videos import VideoNotFoundError
-from src.models import Channel, Comment, CommentReaction, Notification, Video
+from src.models import Channel, Comment, CommentReaction, Video
 from src.schemas.comments import CommentRead, to_comment_read
+from src.services import notification_events
 from src.services.reactions import toggle_reaction
 
 
@@ -49,7 +50,9 @@ class CommentService:
         if not video:
             raise VideoNotFoundError()
 
-        # 2. Validate Parent Comment
+        # 2. Validate Parent Comment. Fetched once and reused for the
+        # notification below, which used to issue the same query again.
+        parent: Comment | None = None
         if parent_id:
             parent = await self.session.scalar(
                 select(Comment).where(Comment.id == parent_id)
@@ -75,17 +78,11 @@ class CommentService:
         self.session.add(comment)
 
         # 4. Notify: video owner on new top-level comment; parent author on reply
-        if parent_id:
-            parent_comment = await self.session.scalar(
-                select(Comment).where(Comment.id == parent_id)
-            )
-            if parent_comment and parent_comment.user_id != user_id:
+        if parent is not None:
+            if parent.user_id != user_id:
                 self.session.add(
-                    Notification(
-                        user_id=parent_comment.user_id,
-                        content="Someone replied to your comment",
-                        link=f"/watch?v={video_id}",
-                        notification_type="comment_reply",
+                    notification_events.comment_reply(
+                        parent_author_id=parent.user_id, video_id=video_id
                     )
                 )
         else:
@@ -94,11 +91,8 @@ class CommentService:
             )
             if channel and channel.user_id != user_id:
                 self.session.add(
-                    Notification(
-                        user_id=channel.user_id,
-                        content="Someone commented on your video",
-                        link=f"/watch?v={video_id}",
-                        notification_type="new_comment",
+                    notification_events.new_comment(
+                        channel_owner_id=channel.user_id, video_id=video_id
                     )
                 )
 

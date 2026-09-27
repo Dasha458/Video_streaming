@@ -1,6 +1,6 @@
 import clientApi from "./clientApi";
 import type { VideoPreview } from "./types";
-import { mapToPreview } from "./videoApi";
+import { mapToPreview, type RawVideoPreview } from "./videoApi";
 
 export interface PlaylistItem {
   id: string;
@@ -35,9 +35,14 @@ export const createPlaylist = (
     .post<PlaylistItem>("/api/playlists", { name, description })
     .then((res) => res.data);
 
+/** What the endpoint sends: same rows as the listings, before mapToPreview. */
+interface RawPlaylistDetail extends Omit<PlaylistDetail, "items"> {
+  items: RawVideoPreview[];
+}
+
 export const getPlaylist = (playlistId: string): Promise<PlaylistDetail> =>
   clientApi
-    .get<any>(`/api/playlists/${playlistId}`)
+    .get<RawPlaylistDetail>(`/api/playlists/${playlistId}`)
     .then((res) => ({
       ...res.data,
       items: (res.data.items ?? []).map(mapToPreview),

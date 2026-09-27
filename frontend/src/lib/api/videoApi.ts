@@ -11,7 +11,7 @@ import type {
 /** Shape of backend src/schemas/video.py's VideoPreview -- what the API
  * actually returns for listing endpoints, before mapToPreview reshapes it
  * into the frontend's VideoPreview. */
-interface RawVideoPreview {
+export interface RawVideoPreview {
   id: string;
   title: string;
   thumbnail: string;

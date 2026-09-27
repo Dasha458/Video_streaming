@@ -13,7 +13,7 @@ import { useState } from "react";
 import { toast } from "@/components/ui/toast/use-toast";
 import { checkUserExists, getGithubAuthUrl } from "@api/authApi";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 import { getApiErrorMessage } from "@/utils/apiError";
 import { PasswordInput } from "@/components/ui/PasswordInput";
 

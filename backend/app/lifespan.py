@@ -55,7 +55,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     # redis-py types commands as `Awaitable[T] | T`; on the async client it is
     # always the awaitable branch.
     await cast(Awaitable[bool], redis.ping())
-    print("Redis connected successfully.")
+    logging.info("Redis connected successfully.")
 
     logging.info("🚀 Startup complete. Background tasks running.")
     yield
@@ -69,6 +69,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
     logging.info("Database engine disposed gracefully.")
 
     await redis.aclose()
-    print("Redis connection closed.")
+    logging.info("Redis connection closed.")
     logging.info("Background tasks cancelled.")
     logging.info("Shutdown complete.")

@@ -263,3 +263,54 @@ async def test_retention_buckets_split_on_the_right_boundary(session: AsyncSessi
         75: 0,
         100: 0,
     }
+
+
+@pytest.mark.asyncio
+async def test_daily_series_bucket_by_day_and_pad_the_gaps(session: AsyncSession):
+    """The six per-day charts share one query builder now.
+
+    Each of them used to be written out separately, so a change to how a
+    day is bucketed could reach five and miss the sixth. These assertions
+    are what makes the shared version safe to rely on.
+    """
+    owner = await make_user(session)
+    viewer_a = await make_user(session)
+    viewer_b = await make_user(session)
+    channel = await make_channel(session, owner)
+    video = await make_video(session, channel)
+
+    today = now()
+    await add_view(session, video, user=viewer_a, at=today)
+    await add_view(session, video, user=viewer_b, at=today)
+    # Two days ago, leaving yesterday empty on purpose.
+    await add_view(session, video, at=today - timedelta(days=2))
+
+    overview = await AnalyticsService(session).get_overview(channel, Period.LAST_7)
+    series = {d.date: d.count for d in overview.views_per_day}
+
+    assert series[today.date().isoformat()] == 2
+    assert series[(today - timedelta(days=1)).date().isoformat()] == 0
+    assert series[(today - timedelta(days=2)).date().isoformat()] == 1
+    # Padded across the whole window, not just the days with activity.
+    assert len(overview.views_per_day) == 8
+
+
+@pytest.mark.asyncio
+async def test_watch_time_and_percent_series_use_their_own_aggregates(
+    session: AsyncSession,
+):
+    owner = await make_user(session)
+    channel = await make_channel(session, owner)
+    video = await make_video(session, channel)
+
+    await add_watch_session(session, video, watched=30, duration=100)
+    await add_watch_session(session, video, watched=70, duration=100)
+
+    engagement = await AnalyticsService(session).get_engagement(channel, Period.LAST_7)
+    today = now().date().isoformat()
+
+    seconds = {d.date: d.count for d in engagement.watch_time_per_day}
+    percent = {d.date: d.count for d in engagement.avg_percent_viewed_per_day}
+
+    assert seconds[today] == 100  # summed
+    assert percent[today] == 50  # averaged, and in percent, not a fraction

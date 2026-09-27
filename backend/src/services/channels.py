@@ -13,7 +13,8 @@ from src.errors.channels import (
     ChannelNotFoundError,
     NotSubscribedError,
 )
-from src.models import Channel, Notification, Subscription, Video
+from src.models import Channel, Subscription, Video
+from src.services import notification_events
 
 if TYPE_CHECKING:
     from sqlalchemy import CursorResult
@@ -149,11 +150,8 @@ class ChannelService:
             .values(subscribers_count=Channel.subscribers_count + 1)
         )
         self.session.add(
-            Notification(
-                user_id=channel.user_id,
-                content="Someone subscribed to your channel",
-                link=f"/channel/{channel.name}",
-                notification_type="new_subscriber",
+            notification_events.new_subscriber(
+                channel_owner_id=channel.user_id, channel_name=channel.name
             )
         )
         await self.session.commit()

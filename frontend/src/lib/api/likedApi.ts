@@ -1,9 +1,11 @@
 import clientApi from "./clientApi";
 import type { VideoPreview } from "./types";
-import { mapToPreview } from "./videoApi";
+import { mapToPreview, type RawVideoPreview } from "./videoApi";
 
 interface LikedPage {
-  items: any[];
+  /** Same rows the listing endpoints return -- mapToPreview reshapes them.
+   *  This was `any[]`, so nothing checked that the two agreed. */
+  items: RawVideoPreview[];
   page: number;
   size: number;
   total: number;

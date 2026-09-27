@@ -6,7 +6,7 @@ import { Avatar } from "@/components/common/Avatar";
 import { useWatchSession } from "@/hooks/useWatchSession";
 import { useFetchCategories } from "@/hooks/useCategories";
 import { useVideo } from "@/hooks/useVideos";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 import { useSidebar } from "@/components/ui/sidebar";
 import { CommentsSection } from "./CommentsSection";
 import { VideoActions } from "./VideoActions";

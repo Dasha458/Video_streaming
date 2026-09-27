@@ -36,18 +36,25 @@ export default function UploadPage() {
         });
     }, [toast]);
 
-    const pickVideo = (file: File) => {
+    // The functional setState form is what lets this have no dependencies.
+    // onDrop below used to capture a pickVideo from the first render, which
+    // in turn captured the title from the first render -- so dropping a
+    // second file overwrote a title the user had already typed.
+    const pickVideo = useCallback((file: File) => {
         setVideoFile(file);
-        if (!title) setTitle(file.name.replace(/\.[^.]+$/, ""));
+        setTitle((prev) => prev || file.name.replace(/\.[^.]+$/, ""));
         setDone(false);
-    };
-
-    const onDrop = useCallback((e: React.DragEvent) => {
-        e.preventDefault();
-        setDragging(false);
-        const file = e.dataTransfer.files[0];
-        if (file?.type.startsWith("video/")) pickVideo(file);
     }, []);
+
+    const onDrop = useCallback(
+        (e: React.DragEvent) => {
+            e.preventDefault();
+            setDragging(false);
+            const file = e.dataTransfer.files[0];
+            if (file?.type.startsWith("video/")) pickVideo(file);
+        },
+        [pickVideo],
+    );
 
     const onDragOver = (e: React.DragEvent) => {
         e.preventDefault();

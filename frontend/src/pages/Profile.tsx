@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -58,7 +58,7 @@ export default function Profile() {
         try {
             await clientApi.patch("/api/auth/me", { username: username.trim() });
             setAccountMsg({ ok: true, text: "Username updated" });
-        } catch (e: any) {
+        } catch (e: unknown) {
             setAccountMsg({ ok: false, text: getApiErrorMessage(e, "Failed to update") });
         } finally {
             setSavingAccount(false);
@@ -72,7 +72,7 @@ export default function Profile() {
             const updated = await updateMyChannel({ name: channelName.trim(), description: channelDesc.trim() || undefined });
             setChannel(updated);
             setChannelMsg({ ok: true, text: "Channel updated" });
-        } catch (e: any) {
+        } catch (e: unknown) {
             setChannelMsg({ ok: false, text: getApiErrorMessage(e, "Failed to update") });
         } finally {
             setSavingChannel(false);
@@ -88,7 +88,7 @@ export default function Profile() {
             await clientApi.post("/api/auth/me/change-password", { current_password: currentPw, new_password: newPw });
             setPwMsg({ ok: true, text: "Password changed successfully" });
             setCurrentPw(""); setNewPw(""); setConfirmPw("");
-        } catch (e: any) {
+        } catch (e: unknown) {
             setPwMsg({ ok: false, text: getApiErrorMessage(e, "Failed to change password") });
         } finally {
             setSavingPw(false);

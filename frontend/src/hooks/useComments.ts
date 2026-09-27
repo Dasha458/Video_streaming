@@ -1,4 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+    useInfiniteQuery,
+    useMutation,
+    useQueryClient,
+    type InfiniteData,
+} from "@tanstack/react-query";
 import { toast } from "@/components/ui/toast/use-toast";
 import { getApiErrorMessage } from "@/utils/apiError";
 import {
@@ -11,7 +16,7 @@ import {
 } from "@api/commentApi";
 import type { VideoComment } from "@api/types";
 
-const COMMENTS_PAGE_SIZE = 100;
+const COMMENTS_PAGE_SIZE = 20;
 
 /**
  * Comment thread for one video: the list plus every mutation the watch page
@@ -23,17 +28,62 @@ export function useComments(videoId: string | undefined) {
     const queryClient = useQueryClient();
     const queryKey = ["comments", videoId];
 
-    const { data: comments = [], isLoading } = useQuery({
+    // Paged, not capped. This used to ask for a single page of 100 with no
+    // way to go further, so the 101st comment on a video simply did not
+    // exist as far as the page was concerned -- and nothing said so.
+    const {
+        data,
+        isLoading,
+        fetchNextPage,
+        hasNextPage,
+        isFetchingNextPage,
+    } = useInfiniteQuery({
         queryKey,
-        queryFn: async () => {
-            const page = await getComments(videoId!, 1, COMMENTS_PAGE_SIZE);
-            return page.items.map(mapCommentFromApi);
+        initialPageParam: 1,
+        queryFn: async ({ pageParam }) => {
+            const page = await getComments(videoId!, pageParam, COMMENTS_PAGE_SIZE);
+            return {
+                items: page.items.map(mapCommentFromApi),
+                total: page.total,
+            };
+        },
+        getNextPageParam: (last, all) => {
+            const loaded = all.reduce((n, p) => n + p.items.length, 0);
+            return loaded < last.total ? all.length + 1 : undefined;
         },
         enabled: Boolean(videoId),
     });
 
+    const comments: VideoComment[] = data?.pages.flatMap((p) => p.items) ?? [];
+    const total = data?.pages[0]?.total ?? comments.length;
+
+    type Page = { items: VideoComment[]; total: number };
+
+    /** Applies `updater` to every loaded page; used by the id-targeted edits. */
     const patch = (updater: (prev: VideoComment[]) => VideoComment[]) =>
-        queryClient.setQueryData<VideoComment[]>(queryKey, (prev) => updater(prev ?? []));
+        queryClient.setQueryData<InfiniteData<Page>>(queryKey, (prev) =>
+            prev
+                ? {
+                      ...prev,
+                      pages: prev.pages.map((p) => ({ ...p, items: updater(p.items) })),
+                  }
+                : prev,
+        );
+
+    /** A brand-new top-level comment goes to the head of the first page. */
+    const prepend = (comment: VideoComment) =>
+        queryClient.setQueryData<InfiniteData<Page>>(queryKey, (prev) =>
+            prev
+                ? {
+                      ...prev,
+                      pages: prev.pages.map((p, i) =>
+                          i === 0
+                              ? { items: [comment, ...p.items], total: p.total + 1 }
+                              : p,
+                      ),
+                  }
+                : prev,
+        );
 
     /** Applies `update` to a top-level comment, or to a reply inside `parentId`. */
     const patchOne = (
@@ -53,8 +103,7 @@ export function useComments(videoId: string | undefined) {
 
     const addComment = useMutation({
         mutationFn: (content: string) => addCommentApi(videoId!, content),
-        onSuccess: (raw) =>
-            patch((prev) => [{ ...mapCommentFromApi(raw), replies: [] }, ...prev]),
+        onSuccess: (raw) => prepend({ ...mapCommentFromApi(raw), replies: [] }),
     });
 
     const addReply = useMutation({
@@ -107,7 +156,11 @@ export function useComments(videoId: string | undefined) {
 
     return {
         comments,
+        total,
         isLoading,
+        hasMore: Boolean(hasNextPage),
+        loadMore: () => void fetchNextPage(),
+        isLoadingMore: isFetchingNextPage,
         addComment: (content: string) => addComment.mutateAsync(content),
         isAddingComment: addComment.isPending,
         addReply: (parentId: string, content: string) => addReply.mutateAsync({ parentId, content }),

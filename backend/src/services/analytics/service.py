@@ -16,7 +16,7 @@ size (for "all", the previous window is considered empty).
 """
 
 from datetime import datetime, timedelta
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Sequence
 from uuid import UUID
 
 from sqlalchemy import func, literal_column, select, true
@@ -168,25 +168,48 @@ class AnalyticsService:
             stmt, VideoWatchSession.started_at, since, until
         )
 
+    # ---------- daily series helper --------------------------------------
+    #
+    # Six queries in this file had the same shape: bucket rows by calendar
+    # day, aggregate them, order by the day, optionally cut off at `since`,
+    # then pad the gaps. Only the aggregate, the timestamp column and the
+    # joins differed. Writing it once means a change to how a day is
+    # bucketed cannot apply to five places and miss the sixth.
+
+    async def _daily_series(
+        self,
+        aggregate: Any,
+        ts_col: Any,
+        *,
+        since: datetime | None,
+        joins: Sequence[tuple[Any, Any]] = (),
+        filters: Sequence[Any] = (),
+        transform: Callable[[Any], int] = int,
+    ) -> list[DailyMetric]:
+        stmt = select(func.date(ts_col).label("day"), aggregate.label("val"))
+        for target, onclause in joins:
+            stmt = stmt.join(target, onclause)
+        if filters:
+            stmt = stmt.where(*filters)
+        if since is not None:
+            stmt = stmt.where(ts_col >= since)
+        stmt = stmt.group_by(literal_column("1")).order_by(literal_column("1"))
+
+        rows = (await self.session.execute(stmt)).all()
+        return _fill_daily([(r.day, transform(r.val)) for r in rows], since)
+
     # ---------- OVERVIEW -------------------------------------------------
 
     async def _overview_views_per_day(
         self, channel_id: UUID, since: datetime | None
     ) -> list[DailyMetric]:
-        stmt = (
-            select(
-                func.date(VideoView.viewed_at).label("day"),
-                func.count(VideoView.id).label("cnt"),
-            )
-            .join(Video, VideoView.video_id == Video.id)
-            .where(Video.channel_id == channel_id)
-            .group_by(literal_column("1"))
-            .order_by(literal_column("1"))
+        return await self._daily_series(
+            func.count(VideoView.id),
+            VideoView.viewed_at,
+            since=since,
+            joins=[(Video, VideoView.video_id == Video.id)],
+            filters=[Video.channel_id == channel_id],
         )
-        if since is not None:
-            stmt = stmt.where(VideoView.viewed_at >= since)
-        rows = (await self.session.execute(stmt)).all()
-        return _fill_daily([(r.day, r.cnt) for r in rows], since)
 
     async def _overview_top_videos(
         self, channel_id: UUID, since: datetime | None, limit: int = 5
@@ -313,19 +336,12 @@ class AnalyticsService:
         channel_id = channel.id
         since, _ = _window(period)
 
-        subs_stmt = (
-            select(
-                func.date(Subscription.created_at).label("day"),
-                func.count(Subscription.subscriber_id).label("cnt"),
-            )
-            .where(Subscription.channel_id == channel_id)
-            .group_by(literal_column("1"))
-            .order_by(literal_column("1"))
+        subscribers_per_day = await self._daily_series(
+            func.count(Subscription.subscriber_id),
+            Subscription.created_at,
+            since=since,
+            filters=[Subscription.channel_id == channel_id],
         )
-        if since is not None:
-            subs_stmt = subs_stmt.where(Subscription.created_at >= since)
-        subs_rows = (await self.session.execute(subs_stmt)).all()
-        subscribers_per_day = _fill_daily([(r.day, r.cnt) for r in subs_rows], since)
 
         unique_stmt = (
             select(func.count(func.distinct(VideoView.user_id)))
@@ -348,20 +364,13 @@ class AnalyticsService:
             (await self.session.execute(returning_stmt)).scalar() or 0
         )
 
-        cmts_stmt = (
-            select(
-                func.date(Comment.created_at).label("day"),
-                func.count(Comment.id).label("cnt"),
-            )
-            .join(Video, Comment.video_id == Video.id)
-            .where(Video.channel_id == channel_id)
-            .group_by(literal_column("1"))
-            .order_by(literal_column("1"))
+        comments_per_day = await self._daily_series(
+            func.count(Comment.id),
+            Comment.created_at,
+            since=since,
+            joins=[(Video, Comment.video_id == Video.id)],
+            filters=[Video.channel_id == channel_id],
         )
-        if since is not None:
-            cmts_stmt = cmts_stmt.where(Comment.created_at >= since)
-        cmts_rows = (await self.session.execute(cmts_stmt)).all()
-        comments_per_day = _fill_daily([(r.day, r.cnt) for r in cmts_rows], since)
 
         return AudienceResponse(
             period=period.value,
@@ -402,41 +411,22 @@ class AnalyticsService:
         engagement_rate = round((likes + comments) / views * 100, 2) if views else 0.0
 
         # Watch time per day
-        wtpd_stmt = (
-            select(
-                func.date(VideoWatchSession.started_at).label("day"),
-                func.coalesce(func.sum(VideoWatchSession.watched_seconds), 0).label(
-                    "secs"
-                ),
-            )
-            .join(Video, VideoWatchSession.video_id == Video.id)
-            .where(Video.channel_id == channel_id)
-            .group_by(literal_column("1"))
-            .order_by(literal_column("1"))
+        watch_time_per_day = await self._daily_series(
+            func.coalesce(func.sum(VideoWatchSession.watched_seconds), 0),
+            VideoWatchSession.started_at,
+            since=since,
+            joins=[(Video, VideoWatchSession.video_id == Video.id)],
+            filters=[Video.channel_id == channel_id],
         )
-        if since is not None:
-            wtpd_stmt = wtpd_stmt.where(VideoWatchSession.started_at >= since)
-        wtpd_rows = (await self.session.execute(wtpd_stmt)).all()
-        watch_time_per_day = _fill_daily([(r.day, r.secs) for r in wtpd_rows], since)
 
         # Avg % viewed per day
-        appd_stmt = (
-            select(
-                func.date(VideoWatchSession.started_at).label("day"),
-                func.coalesce(func.avg(VideoWatchSession.completed_percent), 0).label(
-                    "pct"
-                ),
-            )
-            .join(Video, VideoWatchSession.video_id == Video.id)
-            .where(Video.channel_id == channel_id)
-            .group_by(literal_column("1"))
-            .order_by(literal_column("1"))
-        )
-        if since is not None:
-            appd_stmt = appd_stmt.where(VideoWatchSession.started_at >= since)
-        appd_rows = (await self.session.execute(appd_stmt)).all()
-        avg_pct_per_day = _fill_daily(
-            [(r.day, int(round(float(r.pct or 0)))) for r in appd_rows], since
+        avg_pct_per_day = await self._daily_series(
+            func.coalesce(func.avg(VideoWatchSession.completed_percent), 0),
+            VideoWatchSession.started_at,
+            since=since,
+            joins=[(Video, VideoWatchSession.video_id == Video.id)],
+            filters=[Video.channel_id == channel_id],
+            transform=lambda v: int(round(float(v or 0))),
         )
 
         return EngagementResponse(
@@ -597,19 +587,12 @@ class AnalyticsService:
     async def _video_views_per_day(
         self, video_id: UUID, since: datetime | None
     ) -> list[DailyMetric]:
-        stmt = (
-            select(
-                func.date(VideoView.viewed_at).label("day"),
-                func.count(VideoView.id).label("cnt"),
-            )
-            .where(VideoView.video_id == video_id)
-            .group_by(literal_column("1"))
-            .order_by(literal_column("1"))
+        return await self._daily_series(
+            func.count(VideoView.id),
+            VideoView.viewed_at,
+            since=since,
+            filters=[VideoView.video_id == video_id],
         )
-        if since is not None:
-            stmt = stmt.where(VideoView.viewed_at >= since)
-        rows = (await self.session.execute(stmt)).all()
-        return _fill_daily([(r.day, r.cnt) for r in rows], since)
 
     async def _video_averages(
         self, video_id: UUID, since: datetime | None
