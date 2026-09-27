@@ -25,6 +25,7 @@ from src.services.liked import LikedService
 from src.services.notifications import NotificationService
 from src.services.playlists import PlaylistService
 from src.services.search import SearchService
+from src.services.streaming import StreamService
 from src.services.videos import VideoService
 from src.services.watch_later import WatchLaterService
 
@@ -60,6 +61,13 @@ def get_file_signing_service(
     s3_client: "S3Client" = Depends(get_s3_client),
 ) -> FileSigningService:
     return FileSigningService(s3_client)
+
+
+def get_stream_service(
+    session: "AsyncSession" = Depends(get_async_session),
+    signer: "FileSigningService" = Depends(get_file_signing_service),
+) -> StreamService:
+    return StreamService(session, signer)
 
 
 def get_health_service(

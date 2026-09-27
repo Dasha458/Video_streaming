@@ -6,6 +6,7 @@ import { Avatar } from "@/components/common/Avatar";
 import { useWatchSession } from "@/hooks/useWatchSession";
 import { useFetchCategories } from "@/hooks/useCategories";
 import { useVideo } from "@/hooks/useVideos";
+import { useStreamUrlQuery } from "@/hooks/queries/useVideosQuery";
 import { useAuth } from "@/contexts/useAuth";
 import { useSidebar } from "@/components/ui/sidebar";
 import { CommentsSection } from "./CommentsSection";
@@ -52,6 +53,10 @@ export default function Watch() {
 
     const { video, videos, error, loading, hasMore, loadMore, metaDataText, setVideo } = useVideo(active);
 
+    // The player's source comes from the endpoint that checks this video's
+    // privacy against the caller, not from a field on the video payload.
+    const { streamUrl } = useStreamUrlQuery(videoId || undefined);
+
     // Watch-session heartbeat for creator analytics (watch time / retention).
     // State, not a ref: the player mounts only after the guards below, and a
     // ref's identity never changes, so the hook would never see the element.
@@ -65,7 +70,7 @@ export default function Watch() {
         <div className="flex flex-col lg:flex-row gap-6 p-4">
             <div className="w-full lg:flex-1 min-w-0">
                 <div className="rounded-xl overflow-hidden bg-black">
-                    <VideoPlayer ref={setVideoEl} src={video.hlsUrl} />
+                    <VideoPlayer ref={setVideoEl} src={streamUrl} />
                 </div>
 
                 <h1 className="mt-3 text-lg sm:text-xl font-bold leading-snug">{video.title}</h1>

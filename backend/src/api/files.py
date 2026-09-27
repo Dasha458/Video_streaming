@@ -12,7 +12,7 @@ from fastapi import (
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from src.api.dependencies.rate_limit import limit_requests
-from src.api.dependencies.services import get_file_service, get_file_signing_service
+from src.api.dependencies.services import get_file_service
 from src.core.background_tasks import deindex_video_in_es
 from src.infrastructure.elasticsearch import get_es_client
 from src.schemas.endpoint import (
@@ -21,10 +21,8 @@ from src.schemas.endpoint import (
     FileResponse,
     FileStreamResponse,
 )
-from src.schemas.files import SignedUrlResponse, SignUrlQuery
 from src.schemas.video import VideoDownloadQuery, VideoUploadParams
 from src.services.dependencies import get_current_user_id
-from src.services.file_signing import FileSigningService
 from src.services.files import FileService
 
 router_files = APIRouter(
@@ -169,42 +167,4 @@ async def delete_files(
                 size=video.size,
             )
         ],
-    )
-
-
-@router_files.get(
-    "/sign_url",
-    response_model=SignedUrlResponse,
-    summary="Create a signed URL",
-    description=(
-        "Generates a pre-signed URL that allows temporary access to a video file "
-        "stored in object storage."
-    ),
-    response_description="Signed URL metadata for accessing the requested file.",
-    responses={
-        200: {
-            "model": SignedUrlResponse,
-            "description": "Pre-signed URL generated successfully.",
-        },
-        404: {
-            "model": ErrorResponse,
-            "description": "The requested file could not be found in storage.",
-        },
-        500: {
-            "model": ErrorResponse,
-            "description": "Unexpected error occurred while generating the signed URL.",
-        },
-    },
-)
-async def sign_object(
-    payload: Annotated[SignUrlQuery, Depends()],
-    service: FileSigningService = Depends(get_file_signing_service),
-) -> JSONResponse:
-    result = await service.create_signed_url(payload.file_path)
-
-    headers = {"X-Signed-Url": result["signed_url"]}
-
-    return JSONResponse(
-        content=SignedUrlResponse(**result).model_dump(),
-        headers=headers,
     )

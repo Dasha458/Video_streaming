@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class SignedUrlResponse(BaseModel):
@@ -17,7 +17,3 @@ class SignedUrlResponse(BaseModel):
             ]
         }
     }
-
-
-class SignUrlQuery(BaseModel):
-    file_path: str = Field(..., description="Path to the file to sign")

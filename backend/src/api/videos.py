@@ -1,18 +1,36 @@
 from typing import TYPE_CHECKING, Annotated, List
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Path, Query
-from fastapi.responses import JSONResponse
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Path,
+    Query,
+    Request,
+    Response,
+    status,
+)
+from fastapi.responses import JSONResponse, RedirectResponse
 
-from src.api.dependencies.services import get_video_service
+from src.api.dependencies.services import get_stream_service, get_video_service
 from src.core.background_tasks import set_video_privacy_in_es
 from src.infrastructure.elasticsearch import get_es_client
 from src.schemas.endpoint import ErrorResponse, PaginationQuery
+from src.schemas.files import SignedUrlResponse
 from src.schemas.privacy import PrivacyLevel, PrivacyResponse
 from src.schemas.reaction import ReactionRequest, ReactionResponse
-from src.schemas.video import VideoCategory, VideoPage, VideoPlayback, VideoPreviewPage
+from src.schemas.video import (
+    StreamUrlResponse,
+    VideoCategory,
+    VideoPage,
+    VideoPlayback,
+    VideoPreviewPage,
+)
 from src.services.dependencies import get_current_user_id, get_optional_user_id
+from src.services.streaming import StreamService
 from src.services.videos import VideoService
+from src.services.viewer_identity import viewer_key
 
 if TYPE_CHECKING:
     from elasticsearch import AsyncElasticsearch
@@ -26,6 +44,71 @@ router_videos = APIRouter(
         500: {"description": "Internal server error"},
     },
 )
+
+
+@router_videos.get(
+    "/stream-authorize",
+    include_in_schema=False,
+    summary="Authorise one media object (gateway use)",
+)
+async def stream_authorize(
+    file_path: Annotated[
+        str, Query(description="Gateway path of the object being requested.")
+    ],
+    user_id: UUID | None = Depends(get_optional_user_id),
+    service: StreamService = Depends(get_stream_service),
+) -> JSONResponse:
+    """Called by the gateway for every playlist and segment request.
+
+    This is what replaced ``/api/files/sign_url``. That endpoint signed
+    whatever path it was handed, without asking who wanted it or what it
+    belonged to. This one reads the video id out of the object key and
+    applies the same privacy rule as the watch page, so a path the caller
+    may not watch is refused instead of signed.
+    """
+    result = await service.authorize_media(file_path, user_id)
+    return JSONResponse(
+        content=SignedUrlResponse(**result).model_dump(),
+        headers={"X-Signed-Url": result["signed_url"]},
+    )
+
+
+@router_videos.get(
+    "/{video_id}/stream-url",
+    response_model=StreamUrlResponse,
+    summary="Get the playable URL for a video",
+    description=(
+        "Checks the video's privacy against the caller and returns the URL "
+        "its player should load. Pass `redirect=true` to be sent there with "
+        "a 302 instead."
+    ),
+    responses={
+        200: {"model": StreamUrlResponse, "description": "URL issued."},
+        302: {"description": "Redirected to the stream, when redirect=true."},
+        404: {
+            "model": ErrorResponse,
+            "description": (
+                "No such video, or the caller may not watch it. The two are "
+                "answered the same way so the response does not confirm that "
+                "a private video exists."
+            ),
+        },
+    },
+)
+async def get_stream_url(
+    video_id: UUID,
+    redirect: Annotated[
+        bool, Query(description="Answer with a 302 to the stream instead of JSON.")
+    ] = False,
+    user_id: UUID | None = Depends(get_optional_user_id),
+    service: StreamService = Depends(get_stream_service),
+) -> Response:
+    url, expires_in = await service.stream_url(video_id, user_id)
+    if redirect:
+        return RedirectResponse(url, status_code=status.HTTP_302_FOUND)
+    return JSONResponse(
+        content=StreamUrlResponse(url=url, expires_in=expires_in).model_dump()
+    )
 
 
 @router_videos.get(
@@ -110,6 +193,7 @@ async def get_categories(
     },
 )
 async def get_video_info(
+    request: Request,
     video_id: UUID = Path(
         ..., description="UUID of the video to retrieve playback info for."
     ),
@@ -126,7 +210,11 @@ async def get_video_info(
     service: VideoService = Depends(get_video_service),
 ) -> VideoPlayback:
     return await service.get_playback(
-        video_id=video_id, user_id=user_id, source_type=source
+        video_id=video_id,
+        user_id=user_id,
+        source_type=source,
+        # A view is one viewer, so the request has to say which viewer.
+        viewer_key=viewer_key(request, user_id),
     )
 
 

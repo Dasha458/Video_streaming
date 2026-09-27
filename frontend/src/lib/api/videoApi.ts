@@ -1,5 +1,6 @@
 ﻿import { AxiosError } from "axios";
 import clientApi from "./clientApi";
+import { getVisitorId, VISITOR_HEADER } from "@/lib/visitorId";
 import { timeAgo } from "@/utils/timeAgo";
 import type {
   Video,
@@ -107,9 +108,29 @@ export const getVideos = async ({
 export const getVideo = async (id: string, source?: string): Promise<Video> => {
   const res = await clientApi.get<RawVideoPlayback>(`/api/videos/${id}`, {
     params: source ? { source } : undefined,
+    // This request is what records a view, and a view is one viewer, so it
+    // has to say which viewer. Signed-in callers are identified by their
+    // session; this covers everyone else.
+    headers: { [VISITOR_HEADER]: getVisitorId() },
   });
   return mapToDetail(res.data);
 };
+
+export interface StreamUrl {
+  url: string;
+  expires_in: number;
+}
+
+/** Where the player should load this video from.
+ *
+ *  The server checks the video's privacy against the caller before
+ *  answering, and refuses with a 404 when they may not watch it. This is
+ *  the only way to obtain a media URL: the endpoint that used to sign any
+ *  path it was handed is gone. */
+export const getStreamUrl = (videoId: string): Promise<StreamUrl> =>
+  clientApi
+    .get<StreamUrl>(`/api/videos/${videoId}/stream-url`)
+    .then((res) => res.data);
 
 export const getVideoPreviewsByCategory = async (
   category: string,
@@ -205,6 +226,7 @@ export const downloadVideo = async (
 export default {
   getVideos,
   getVideo,
+  getStreamUrl,
   uploadVideo,
   updateVideoPrivacy,
   deleteVideo,

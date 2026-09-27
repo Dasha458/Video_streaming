@@ -225,15 +225,31 @@ async def make_video(
 
 
 async def add_view(
-    session: AsyncSession, video, *, at: datetime, user=None, source: str | None = None
+    session: AsyncSession,
+    video,
+    *,
+    at: datetime,
+    user=None,
+    source: str | None = None,
+    viewer: str | None = None,
 ):
+    """One row per viewer per video -- pass `viewer` to be someone else.
+
+    Defaults to the signed-in user's key, or a fresh anonymous one, so a
+    test that just wants "another view" gets another viewer rather than a
+    unique-index violation.
+    """
     from src.models import VideoView
+
+    if viewer is None:
+        viewer = f"user:{user.id}" if user else f"anon:{uuid.uuid4()}"
 
     session.add(
         VideoView(
             id=uuid.uuid4(),
             video_id=video.id,
             user_id=user.id if user else None,
+            viewer_key=viewer,
             viewed_at=at,
             source_type=source,
         )

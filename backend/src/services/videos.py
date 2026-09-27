@@ -38,6 +38,7 @@ class VideoService:
         video_id: UUID,
         user_id: UUID | None,
         source_type: str | None = None,
+        viewer_key: str | None = None,
     ) -> VideoPlayback:
         video = await self._get_video_with_details(video_id)
 
@@ -54,7 +55,10 @@ class VideoService:
             if user_id is None or owner_id != user_id:
                 raise VideoNotFoundError()
 
-        await self._record_view(video.id, user_id, source_type=source_type)
+        if viewer_key:
+            await self._record_view(
+                video.id, user_id, viewer_key, source_type=source_type
+            )
 
         resolutions = [f"{r.height}p" for r in video.resolutions]
         return map_video_to_playback(video, resolutions)
@@ -195,21 +199,23 @@ class VideoService:
         self,
         video_id: UUID,
         user_id: UUID | None,
+        viewer_key: str,
         source_type: str | None = None,
     ) -> None:
-        """Record a view and, for signed-in users, refresh watch history.
+        """Record one view per viewer, and refresh a signed-in user's history.
 
-        Anonymous views used to be dropped entirely -- the caller only
-        reached this method ``if user_id``. That contradicted the schema,
-        which makes ``user_id`` nullable and scopes the unique index to
-        ``WHERE user_id IS NOT NULL`` precisely so anonymous rows can exist.
-        The effect was that traffic sources, real-time and audience panels
-        never saw a single signed-out viewer.
+        ``viewer_key`` is the identity resolved in
+        :mod:`src.services.viewer_identity`: the signed-in user, else the
+        id their browser keeps, else a hash of address and agent. The
+        unique index over (video_id, viewer_key) is what makes a view mean
+        one viewer -- signed-out visits used to be dropped before they
+        reached the database at all, and before that the index only
+        applied WHERE user_id IS NOT NULL, so counting both kinds together
+        would have mixed unique viewers with raw hits.
 
-        For a signed-in user the partial unique index still allows one row
-        per (video, user). Leaning on ON CONFLICT instead of a preceding
-        SELECT also closes the race where two simultaneous first views both
-        passed the existence check and the second raised an IntegrityError.
+        ON CONFLICT rather than a preceding SELECT also closes the race
+        where two simultaneous first views both passed an existence check
+        and the second raised an IntegrityError.
         """
         source = (source_type or "unknown")[:32]
 
@@ -219,12 +225,10 @@ class VideoService:
                 id=_uuid.uuid4(),
                 video_id=video_id,
                 user_id=user_id,
+                viewer_key=viewer_key,
                 source_type=source,
             )
-            .on_conflict_do_nothing(
-                index_elements=["video_id", "user_id"],
-                index_where=VideoView.user_id.isnot(None),
-            )
+            .on_conflict_do_nothing(index_elements=["video_id", "viewer_key"])
         )
         # rowcount lives on CursorResult; execute() is typed as Result.
         result = cast("CursorResult[Any]", await self.session.execute(insert_view))
@@ -244,7 +248,7 @@ class VideoService:
                 update(VideoView)
                 .where(
                     VideoView.video_id == video_id,
-                    VideoView.user_id == user_id,
+                    VideoView.viewer_key == viewer_key,
                     (VideoView.source_type.is_(None))
                     | (VideoView.source_type == "unknown"),
                 )
