@@ -13,6 +13,10 @@ interface CommentsSectionProps {
 export function CommentsSection({ videoId, user }: CommentsSectionProps) {
     const {
         comments,
+        total,
+        hasMore,
+        loadMore,
+        isLoadingMore,
         addComment,
         isAddingComment,
         addReply,
@@ -33,7 +37,9 @@ export function CommentsSection({ videoId, user }: CommentsSectionProps) {
 
     return (
         <div className="mt-6">
-            <h2 className="font-semibold text-base mb-4">{comments.length} Comments</h2>
+            <h2 className="font-semibold text-base mb-4">
+                {total} {total === 1 ? "Comment" : "Comments"}
+            </h2>
 
             {user ? (
                 <form onSubmit={submit} className="flex gap-3 mb-6">
@@ -77,6 +83,20 @@ export function CommentsSection({ videoId, user }: CommentsSectionProps) {
                 ))}
                 {comments.length === 0 && (
                     <p className="text-sm text-muted-foreground">No comments yet. Be the first!</p>
+                )}
+                {hasMore && (
+                    <div className="pt-2">
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="rounded-full"
+                            onClick={loadMore}
+                            disabled={isLoadingMore}
+                        >
+                            {isLoadingMore ? "Loading…" : "Show more comments"}
+                        </Button>
+                    </div>
                 )}
             </div>
         </div>

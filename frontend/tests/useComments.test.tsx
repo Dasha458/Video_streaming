@@ -38,7 +38,7 @@ describe("useComments", () => {
         vi.mocked(getComments).mockResolvedValue({
             items: [rawComment("c1"), rawComment("c2")],
             page: 1,
-            size: 100,
+            size: 20,
             total: 2,
         });
     });
@@ -47,7 +47,7 @@ describe("useComments", () => {
         const { result } = renderHookWithProviders(() => useComments("vid"));
 
         await waitFor(() => expect(result.current.comments).toHaveLength(2));
-        expect(getComments).toHaveBeenCalledWith("vid", 1, 100);
+        expect(getComments).toHaveBeenCalledWith("vid", 1, 20);
         expect(result.current.comments[0]).toMatchObject({ id: "c1", userId: "u1", content: "body c1" });
     });
 
@@ -120,5 +120,38 @@ describe("useComments", () => {
         });
         // Parent untouched.
         expect(result.current.comments[0]).toMatchObject({ likesCount: 0, dislikesCount: 0 });
+    });
+
+    it("keeps loading pages instead of stopping at the first", async () => {
+        // The thread used to be fetched as one page of 100 with no way
+        // forward, so a video's 101st comment was simply invisible.
+        vi.mocked(getComments)
+            .mockResolvedValueOnce({
+                items: [rawComment("c1"), rawComment("c2")],
+                page: 1,
+                size: 20,
+                total: 3,
+            })
+            .mockResolvedValueOnce({
+                items: [rawComment("c3")],
+                page: 2,
+                size: 20,
+                total: 3,
+            });
+
+        const { result } = renderHookWithProviders(() => useComments("vid"));
+
+        await waitFor(() => expect(result.current.comments).toHaveLength(2));
+        expect(result.current.total).toBe(3);
+        expect(result.current.hasMore).toBe(true);
+
+        await act(async () => {
+            result.current.loadMore();
+        });
+
+        await waitFor(() => expect(result.current.comments).toHaveLength(3));
+        expect(getComments).toHaveBeenLastCalledWith("vid", 2, 20);
+        expect(result.current.comments.map((c) => c.id)).toEqual(["c1", "c2", "c3"]);
+        expect(result.current.hasMore).toBe(false);
     });
 });

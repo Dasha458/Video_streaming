@@ -162,7 +162,7 @@ export default function VideoAnalytics() {
                                     <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                                     <XAxis dataKey="percent" tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11 }} />
                                     <YAxis tick={{ fontSize: 11 }} allowDecimals={false} />
-                                    <Tooltip formatter={(v: any) => `${Number(v ?? 0).toLocaleString()} viewers`} labelFormatter={(l: any) => `Reached ≥ ${l}%`} />
+                                    <Tooltip formatter={(v: unknown) => `${Number(v ?? 0).toLocaleString()} viewers`} labelFormatter={(l: unknown) => `Reached ≥ ${String(l)}%`} />
                                     <Bar dataKey="viewers" fill="hsl(var(--primary))" radius={[3, 3, 0, 0]} />
                                 </BarChart>
                             </ResponsiveContainer>

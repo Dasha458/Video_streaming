@@ -34,7 +34,7 @@ export default function CreateChannelGate({ children }: Props) {
         try {
             const created = await createChannel({ name: name.trim(), description: desc.trim() || undefined });
             setChannel(created);
-        } catch (e: any) {
+        } catch (e: unknown) {
             setError(getApiErrorMessage(e, "Failed to create channel"));
         } finally {
             setCreating(false);

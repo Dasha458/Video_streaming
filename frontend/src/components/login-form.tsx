@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label"
 import { Link, useNavigate } from "react-router-dom"
 import { useState } from "react";
 import { toast } from "@/components/ui/toast/use-toast";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 import { getGithubAuthUrl } from "@api/authApi";
 import { getApiErrorMessage } from "@/utils/apiError";
 import { PasswordInput } from "@/components/ui/PasswordInput";

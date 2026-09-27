@@ -9,7 +9,7 @@ const login = vi.fn();
 const navigate = vi.fn();
 const toast = vi.fn();
 
-vi.mock("@/contexts/AuthContext", () => ({
+vi.mock("@/contexts/useAuth", () => ({
     useAuth: () => ({ login }),
 }));
 

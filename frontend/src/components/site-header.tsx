@@ -5,7 +5,7 @@ import { useSidebar } from "@/components/ui/sidebar";
 import { NavUser } from "@/components/nav-user";
 import { ModeToggle } from "@/components/mode-toggle";
 import { SearchForm } from "@/components/search-form";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 import { Link } from "react-router-dom";
 import clientApi from "@api/clientApi";
 

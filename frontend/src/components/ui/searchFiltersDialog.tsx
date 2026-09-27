@@ -1,5 +1,4 @@
 import {
-import { formatCompact } from "@/utils/formatters";
     Dialog,
     DialogContent,
     DialogTitle,
@@ -11,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useCallback, useState } from 'react';
 import { Slider } from "@/components/ui/slider";
+import { formatCompact } from "@/utils/formatters";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useFetchCategories } from "@/hooks/useCategories";
 import { useSearch } from "@/hooks/useSearch";

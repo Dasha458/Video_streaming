@@ -191,8 +191,6 @@ export interface SearchFilters {
   includeDescription: boolean; // Also match the video description, not just the title
 }
 
-type SetVideoState = React.Dispatch<React.SetStateAction<VideoDetail | null>>;
-
 export interface NoSearchResultsProps {
   query: string;
 }

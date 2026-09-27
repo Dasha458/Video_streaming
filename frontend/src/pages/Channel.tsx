@@ -8,7 +8,7 @@ import VideoCard from "@/components/VideoCard";
 import InfiniteScroll from "@/components/infinite-scroll";
 import type { ChannelInfo } from "@api/types";
 import channelApi from "@api/channelApi";
-import { useAuth } from "@/contexts/AuthContext";
+import { useAuth } from "@/contexts/useAuth";
 import { timeAgo } from "@/utils/timeAgo";
 import { Avatar } from "@/components/common/Avatar";
 import { useVideosQuery } from "@/hooks/queries/useVideosQuery";

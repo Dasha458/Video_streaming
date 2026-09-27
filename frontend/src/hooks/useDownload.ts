@@ -32,7 +32,7 @@ export function useDownload({ video, resolution }: UseDownloadProps) {
       a.href = url;
 
       // Strip characters Windows/macOS reject in a filename.
-      const safeTitle = (video.title || "video").replace(/[\/:*?"<>|]+/g, "_");
+      const safeTitle = (video.title || "video").replace(/[\\/:*?"<>|]+/g, "_");
       a.download = `${safeTitle}_${resolution}.mp4`;
       document.body.appendChild(a);
       a.click();
