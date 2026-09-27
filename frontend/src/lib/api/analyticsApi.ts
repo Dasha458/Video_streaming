@@ -137,7 +137,6 @@ export interface WatchSessionPing {
   video_id: string;
   watched_seconds: number;
   video_duration_seconds: number;
-  source_type?: string;
 }
 
 export interface WatchSessionAck {

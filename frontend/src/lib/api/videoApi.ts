@@ -102,8 +102,12 @@ export const getVideos = async ({
   return (res.data.items || []).map(mapToPreview);
 };
 
-export const getVideo = async (id: string): Promise<Video> => {
-  const res = await clientApi.get<RawVideoPlayback>(`/api/videos/${id}`);
+/** `source` is the traffic-source hint the backend stamps on the VideoView
+ *  row this request creates. Omitting it recorded every view as "unknown". */
+export const getVideo = async (id: string, source?: string): Promise<Video> => {
+  const res = await clientApi.get<RawVideoPlayback>(`/api/videos/${id}`, {
+    params: source ? { source } : undefined,
+  });
   return mapToDetail(res.data);
 };
 

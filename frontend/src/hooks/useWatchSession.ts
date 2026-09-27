@@ -18,14 +18,14 @@ import { beaconWatchSession, sendWatchSession } from "@/lib/api/analyticsApi";
  * Pass it via a callback ref (`ref={setVideoEl}`) so this re-runs when the
  * player actually mounts.
  *
- * The "source" tag is derived from ``document.referrer`` the first time
- * the hook runs on this page-load; callers can override by passing
- * ``sourceOverride``.
+ * The traffic-source tag does not belong here: the ping used to carry one
+ * and the server discarded it, because a watch session has no column for
+ * it. It travels with the video request instead, which is where the view
+ * row it labels is created.
  */
 export function useWatchSession(
     videoId: string | undefined,
     videoElement: HTMLVideoElement | null,
-    sourceOverride?: string,
 ) {
     const sessionIdRef = useRef<string>("");
     const watchedRef = useRef<number>(0);
@@ -35,12 +35,6 @@ export function useWatchSession(
     const lastTickRef = useRef<number | null>(null);
     const durationRef = useRef<number>(0);
     const sentOnceRef = useRef<boolean>(false);
-
-    // Derive a source tag from the referrer once per mount.
-    const sourceRef = useRef<string | undefined>(undefined);
-    if (sourceRef.current === undefined) {
-        sourceRef.current = sourceOverride ?? inferSource();
-    }
 
     // Fresh session id on every new videoId.
     useEffect(() => {
@@ -120,7 +114,6 @@ export function useWatchSession(
                 video_id: videoId!,
                 watched_seconds: Math.floor(watchedRef.current),
                 video_duration_seconds: durationRef.current,
-                source_type: sentOnceRef.current ? undefined : sourceRef.current,
             };
         }
 
@@ -153,23 +146,4 @@ function cryptoUUID(): string {
         const v = c === "x" ? r : (r & 0x3) | 0x8;
         return v.toString(16);
     });
-}
-
-function inferSource(): string {
-    try {
-        const ref = document.referrer;
-        if (!ref) return "direct";
-        const here = window.location.host;
-        const u = new URL(ref);
-        if (u.host !== here) return "external";
-        if (u.pathname.startsWith("/search")) return "search";
-        if (u.pathname.startsWith("/subscriptions")) return "subscriptions";
-        if (u.pathname.startsWith("/channel")) return "channel_page";
-        if (u.pathname.startsWith("/playlists")) return "playlist";
-        if (u.pathname.startsWith("/watch")) return "recommendation";
-        if (u.pathname === "/") return "recommendation";
-        return "direct";
-    } catch {
-        return "direct";
-    }
 }

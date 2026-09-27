@@ -183,15 +183,6 @@ class WatchSessionPing(BaseModel):
     video_id: UUID
     watched_seconds: int = Field(ge=0)
     video_duration_seconds: int = Field(ge=0)
-    source_type: str | None = Field(
-        default=None,
-        max_length=32,
-        description=(
-            "Optional traffic source tag attached on the first heartbeat: "
-            "direct, search, recommendation, external, channel_page, "
-            "playlist, subscriptions."
-        ),
-    )
 
 
 class WatchSessionAck(BaseModel):

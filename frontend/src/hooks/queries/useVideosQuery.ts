@@ -1,5 +1,6 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { getVideo, getVideos, getVideoPreviewsByCategory } from "@api/videoApi";
+import { inferSource } from "@/lib/trafficSource";
 import { timeAgo } from "@/utils/timeAgo";
 import type { VideoDetail, VideoPreviewWithTime } from "@api/types";
 
@@ -72,7 +73,7 @@ export function useVideoQuery(videoId: string | undefined) {
     const query = useQuery({
         queryKey: ["video", videoId],
         queryFn: async () => {
-            const data = await getVideo(videoId!);
+            const data = await getVideo(videoId!, inferSource());
             const createdAt = data.created_at || new Date().toISOString();
             return {
                 id: data.id || "",

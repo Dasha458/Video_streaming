@@ -289,7 +289,13 @@ async def add_watch_session(
             started_at=at or now(),
             watched_seconds=watched,
             video_duration_seconds=duration,
-            completed_percent=watched / duration if duration else 0.0,
+            # Percent, 0-100 -- the same thing AnalyticsService.
+            # record_watch_session() writes. This used to store the fraction
+            # watched/duration, which is why the reader's matching unit bug
+            # went unnoticed: the fixture agreed with the bug.
+            completed_percent=(
+                min(100.0, round(watched / duration * 100, 2)) if duration else 0.0
+            ),
         )
     )
     await session.flush()

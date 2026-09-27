@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock
 import pytest
 
 
-
 @pytest.fixture(autouse=True)
 def _all_hits_visible(app):
     """Let every search hit through the database visibility check.
