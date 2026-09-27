@@ -8,7 +8,7 @@ import api from "@api/videoApi";
 import categoriesApi from "@api/categoriesApi";
 import {useToast} from "@/components/ui/toast/use-toast";
 import type {Category} from "@api/types";
-import {getErrorMessage} from "@/utils/error";
+import { getApiErrorMessage } from "@/utils/apiError";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
 
 type Privacy = "public" | "private";
@@ -91,7 +91,7 @@ export default function UploadPage() {
             setDone(true);
             toast({title: "Upload complete", description: "Your video has been submitted for processing."});
         } catch (err) {
-            toast({title: "Upload failed", description: getErrorMessage(err), variant: "destructive"});
+            toast({title: "Upload failed", description: getApiErrorMessage(err, "Upload failed"), variant: "destructive"});
         } finally {
             setLoading(false);
         }

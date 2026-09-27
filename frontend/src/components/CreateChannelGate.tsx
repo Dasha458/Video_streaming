@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getMyChannel, createChannel } from "@api/channelApi";
 import type { ChannelInfo } from "@api/types";
+import { getApiErrorMessage } from "@/utils/apiError";
 
 interface Props {
     children: ReactNode;
@@ -34,8 +35,7 @@ export default function CreateChannelGate({ children }: Props) {
             const created = await createChannel({ name: name.trim(), description: desc.trim() || undefined });
             setChannel(created);
         } catch (e: any) {
-            const msg = e?.response?.data?.detail ?? "Failed to create channel";
-            setError(typeof msg === "string" ? msg : "Failed to create channel");
+            setError(getApiErrorMessage(e, "Failed to create channel"));
         } finally {
             setCreating(false);
         }
