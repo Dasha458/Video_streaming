@@ -9,7 +9,11 @@ import uuid
 
 from starlette.requests import Request
 
-from src.services.viewer_identity import VISITOR_HEADER, viewer_key
+from src.services.viewer_identity import (
+    REAL_IP_HEADER,
+    VISITOR_HEADER,
+    viewer_key,
+)
 
 
 def _Request(
@@ -76,18 +80,46 @@ class TestFallback:
         b = viewer_key(_Request({"user-agent": "Safari"}), None)
         assert a != b
 
-    def test_the_address_is_the_one_the_gateway_saw(self):
-        """X-Forwarded-For accumulates left to right.
+    def test_the_address_comes_from_the_gateway(self):
+        """X-Real-IP is written by nginx and cannot be supplied by a caller.
 
-        Only the entries our own proxies appended can be trusted; the
-        first is whatever the client chose to send, so a caller could
-        otherwise mint a new viewer per request and inflate the count.
+        It is the only address the application trusts. nginx overwrites it
+        on the way through -- from Caddy's value when Caddy is the edge,
+        from the connection otherwise -- so whatever a client sends under
+        that name is replaced before it gets here.
         """
-        spoofed = _Request(
-            {"x-forwarded-for": "9.9.9.9, 203.0.113.7", "user-agent": "UA"}
+        key = viewer_key(
+            _Request({REAL_IP_HEADER: "203.0.113.7", "user-agent": "UA"}), None
         )
-        honest = _Request({"x-forwarded-for": "203.0.113.7", "user-agent": "UA"})
-        assert viewer_key(spoofed, None) == viewer_key(honest, None)
+        same = viewer_key(
+            _Request({REAL_IP_HEADER: "203.0.113.7", "user-agent": "UA"}), None
+        )
+        other = viewer_key(
+            _Request({REAL_IP_HEADER: "198.51.100.4", "user-agent": "UA"}), None
+        )
+        assert key == same
+        assert key != other
+
+    def test_x_forwarded_for_is_ignored(self):
+        """Parsing it in the application would be wrong in both directions.
+
+        Its first entry is whatever the client wrote, and its last is our
+        own edge -- which would merge every visitor into one.
+        """
+        with_xff = _Request(
+            {
+                REAL_IP_HEADER: "203.0.113.7",
+                "x-forwarded-for": "9.9.9.9, 10.0.0.1, 172.18.0.5",
+                "user-agent": "UA",
+            }
+        )
+        without = _Request({REAL_IP_HEADER: "203.0.113.7", "user-agent": "UA"})
+        assert viewer_key(with_xff, None) == viewer_key(without, None)
+
+    def test_the_connection_is_used_when_no_gateway_is_in_front(self):
+        direct = _Request({"user-agent": "UA"}, client_host="203.0.113.9")
+        elsewhere = _Request({"user-agent": "UA"}, client_host="198.51.100.9")
+        assert viewer_key(direct, None) != viewer_key(elsewhere, None)
 
     def test_a_request_with_no_client_still_resolves(self):
         assert viewer_key(_Request({}, client_host=None), None).startswith("fp:")

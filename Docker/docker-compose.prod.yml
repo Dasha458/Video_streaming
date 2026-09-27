@@ -38,8 +38,15 @@ services:
 
   nginx:
     # Caddy is the only way in; nginx must not be reachable directly, or the
-    # X-Forwarded-Proto it trusts could be forged by a client.
+    # X-Forwarded-Proto and X-Real-IP it trusts could be forged by a client.
     ports: !override []
+    volumes:
+      - ../gateway/nginx.conf:/etc/nginx/nginx.conf
+      - ../gateway/security-headers.conf:/etc/nginx/security-headers.conf
+      # Teaches nginx that Caddy is in front, so $$remote_addr -- and with it
+      # the client address the backend is told -- is the real visitor rather
+      # than Caddy's container. Never mounted without a proxy ahead of us.
+      - ../gateway/prod-realip.conf:/etc/nginx/realip/prod-realip.conf:ro
 
 volumes:
   caddy_data:
