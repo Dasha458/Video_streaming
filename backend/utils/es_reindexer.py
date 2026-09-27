@@ -5,6 +5,7 @@ from typing import Any, Dict, List
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload, selectinload
 
+from src.core.status_ids import PRIVACY_LABELS, STATUS_READY_ID
 from src.infrastructure.database import async_session_maker
 from src.infrastructure.elasticsearch import get_es_client
 from src.models.video import Video
@@ -25,6 +26,10 @@ async def reindex_videos_from_db(batch_size: int = 500) -> None:
         while True:
             result = await session.execute(
                 select(Video)
+                # Only finished videos belong in the index: the realtime
+                # indexer runs on the encoder's "ready" message, and a hit
+                # on anything else now 404s on playback anyway.
+                .where(Video.status_id == STATUS_READY_ID)
                 .order_by(Video.created_at.desc())
                 .options(
                     joinedload(Video.channel),
@@ -59,6 +64,11 @@ async def reindex_videos_from_db(batch_size: int = 500) -> None:
                     "thumbnail_url": v.thumbnail_path or "",
                     "created_at": v.created_at.isoformat() if v.created_at else "",
                     "views": v.views_count or 0,
+                    # A bulk "index" op replaces the whole document. Without
+                    # this the field the search query filters on would be
+                    # stripped from every video on the next reindex, quietly
+                    # putting private videos back into the results.
+                    "privacy": PRIVACY_LABELS.get(v.privacy_id, "private"),
                     "suggest_name": {
                         "input": suggestion_inputs,
                         "weight": v.views_count or 1,

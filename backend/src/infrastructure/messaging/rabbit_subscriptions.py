@@ -13,7 +13,7 @@ from sqlalchemy.orm import joinedload
 
 from src.config import get_rabbitmq_settings
 from src.core.background_tasks import index_video_in_es
-from src.core.status_ids import status_id_for
+from src.core.status_ids import PRIVACY_LABELS, status_id_for
 from src.errors.rabbit_broker import (
     UnknownEncoderStatusError,
     VideoEncodingPersistenceError,
@@ -138,6 +138,7 @@ async def status_handler(
             category=verified_video.category.name,
             channel_id=verified_video.channel_id,
             views=0,
+            privacy=PRIVACY_LABELS.get(verified_video.privacy_id, "private"),
         ).model_dump()
         background_tasks.add_task(index_video_in_es, video_doc, es)
 

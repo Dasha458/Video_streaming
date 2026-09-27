@@ -11,7 +11,7 @@ from datetime import timedelta
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.schemas.analytics import Period
+from src.schemas.analytics import Period, WatchSessionPing
 from src.services.analytics import AnalyticsService
 from tests.integration.conftest import (
     REACTION_DISLIKE_ID,
@@ -206,3 +206,60 @@ async def test_traffic_sources_percentages_sum_to_roughly_100(session: AsyncSess
     by_source = {s.source: s for s in sources.sources}
     assert by_source["search"].views == 3
     assert by_source["direct"].views == 1
+
+
+@pytest.mark.asyncio
+async def test_percent_viewed_survives_the_round_trip(session: AsyncSession):
+    """What record_watch_session writes is what the reports read back.
+
+    completed_percent is a percentage, 0-100. The reports used to treat it
+    as a 0.0-1.0 fraction and multiply by 100, so a video watched to the
+    end was reported as 10000 % and every retention bucket matched every
+    session. Writing through the real service and reading through the real
+    query is the only way to catch a disagreement between the two.
+    """
+    owner = await make_user(session)
+    channel = await make_channel(session, owner)
+    video = await make_video(session, channel)
+
+    service = AnalyticsService(session)
+    await service.record_watch_session(
+        WatchSessionPing(
+            session_id=uuid.uuid4(),
+            video_id=video.id,
+            watched_seconds=100,
+            video_duration_seconds=100,
+        ),
+        user_id=owner.id,
+    )
+
+    engagement = await service.get_engagement(channel, Period.LAST_7)
+    assert engagement.average_percent_viewed == 100.0
+
+    detail = await service.get_video_analytics(channel, video.id, Period.LAST_7)
+    assert detail is not None
+    assert detail.average_percent_viewed == 100.0
+    # A session watched to the end belongs in every bucket, including 100 %.
+    assert [b.viewers for b in detail.retention] == [1, 1, 1, 1, 1]
+
+
+@pytest.mark.asyncio
+async def test_retention_buckets_split_on_the_right_boundary(session: AsyncSession):
+    owner = await make_user(session)
+    channel = await make_channel(session, owner)
+    video = await make_video(session, channel)
+
+    # 40 % watched: counts towards 10 and 25, not towards 50, 75 or 100.
+    await add_watch_session(session, video, watched=40, duration=100)
+
+    detail = await AnalyticsService(session).get_video_analytics(
+        channel, video.id, Period.LAST_7
+    )
+    assert detail is not None
+    assert {b.percent: b.viewers for b in detail.retention} == {
+        10: 1,
+        25: 1,
+        50: 0,
+        75: 0,
+        100: 0,
+    }

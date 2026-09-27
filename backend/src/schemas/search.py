@@ -11,6 +11,10 @@ class VideoIndexDocument(BaseModel):
     category: Optional[str] = Field(None, description="Category slug or name")
     channel_id: UUID = Field(..., description="Channel UUID")
     views: int = Field(0, description="Total number of views")
+    privacy: str = Field(
+        "public",
+        description="Privacy of the video at index time; search excludes private ones.",
+    )
 
 
 class VideoIndexMapping:
@@ -37,7 +41,7 @@ class VideoIndexMapping:
             },
         }
     }
-    mappings = {
+    mappings: dict[str, dict[str, dict[str, Any]]] = {
         "properties": {
             "id": {"type": "keyword"},
             "name": {
@@ -49,6 +53,9 @@ class VideoIndexMapping:
             "channel_id": {"type": "keyword"},
             "category": {"type": "keyword"},  # A single category
             "views": {"type": "integer"},
+            # Without this the index carried no notion of visibility, so a
+            # private video was returned by search along with its id.
+            "privacy": {"type": "keyword"},
             # For the video hints/autocomplete feature
             "suggest_name": {
                 "type": "completion",

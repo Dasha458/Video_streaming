@@ -39,6 +39,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator:
             mappings=VideoIndexMapping.mappings,
             settings=VideoIndexMapping.settings,
         )
+    else:
+        # An index created by an earlier version has no "privacy" field, and
+        # create() is skipped once it exists. Adding fields to a live mapping
+        # is allowed and idempotent; changing one is not, so this only ever
+        # widens the mapping.
+        await es_client.indices.put_mapping(
+            index=VideoIndexMapping.index_name,
+            properties=VideoIndexMapping.mappings["properties"],
+        )
     logging.info("ElasticSearch index verified/created.")
     logging.info("Startup complete. Metrics exposed.")
 

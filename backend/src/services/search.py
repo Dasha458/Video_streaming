@@ -7,8 +7,15 @@ from src.errors.search import VideoHintsError, VideoSearchError
 
 
 class SearchService:
+    #: Elasticsearch rejects from_ + size past this (index.max_result_window).
+    MAX_RESULT_WINDOW = 10_000
+
     def __init__(self, es: AsyncElasticsearch):
         self.es = es
+
+    @classmethod
+    def _total_hits_cap(cls) -> int:
+        return cls.MAX_RESULT_WINDOW
 
     @staticmethod
     def _total_hits(result: Any) -> int:
@@ -77,10 +84,31 @@ class SearchService:
             if has_description:
                 filters.append({"exists": {"field": "description"}})
 
-            text_query = {"bool": {"must": [must_query], "filter": filters}}
+            # Private videos must never surface. must_not (rather than a
+            # term filter on "public") also keeps documents indexed before
+            # the privacy field existed searchable instead of silently
+            # emptying the index; the caller drops anything the database
+            # says is not public, so a stale document cannot leak either.
+            text_query = {
+                "bool": {
+                    "must": [must_query],
+                    "filter": filters,
+                    "must_not": [{"term": {"privacy": "private"}}],
+                }
+            }
 
+            # Elasticsearch refuses from_ + size beyond max_result_window
+            # (10 000 by default) with a 400; offset alone is capped at
+            # 10 000 by the request schema, so the last page would have
+            # tipped over it.
+            window = max(0, self.MAX_RESULT_WINDOW - offset)
+            if window == 0:
+                return {"hits": [], "total": self._total_hits_cap()}
             result = await self.es.search(
-                index="videos", query=text_query, size=limit, from_=offset
+                index="videos",
+                query=text_query,
+                size=min(limit, window),
+                from_=offset,
             )
             return {
                 "hits": [

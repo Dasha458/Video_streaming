@@ -1,10 +1,11 @@
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 
 from src.api.dependencies.metrics import video_search_metrics
-from src.api.dependencies.services import get_search_service
+from src.api.dependencies.services import get_search_service, get_video_service
 from src.schemas.endpoint import ErrorResponse
 from src.schemas.search import (
     VideoHintQuery,
@@ -14,6 +15,7 @@ from src.schemas.search import (
     VideoSearchResponse,
 )
 from src.services.search import SearchService
+from src.services.videos import VideoService
 
 router_search = APIRouter(
     prefix="/api/search",
@@ -79,6 +81,7 @@ async def get_hints(
 async def video_search(
     payload: VideoSearchRequest,
     service: SearchService = Depends(get_search_service),
+    videos: VideoService = Depends(get_video_service),
 ) -> VideoSearchResponse:
     """Full-text video search over the Elasticsearch index."""
 
@@ -92,9 +95,19 @@ async def video_search(
         payload.offset,
     )
 
+    hits = result["hits"]
+    # The index excludes private videos, but it is still only a cache: it can
+    # hold a document written before the privacy field existed, or one not yet
+    # updated after the owner flipped the switch. Confirm against the database
+    # before answering, so a stale document cannot expose a private video.
+    visible = await videos.filter_public_ready_ids([UUID(str(h["id"])) for h in hits])
+    kept = [h for h in hits if UUID(str(h["id"])) in visible]
+
+    total = max(0, result.get("total", 0) - (len(hits) - len(kept)))
+
     return VideoSearchResponse(
-        results=[VideoResult(**hit) for hit in result["hits"]],
-        total=result.get("total", 0),
+        results=[VideoResult(**hit) for hit in kept],
+        total=total,
         offset=payload.offset,
         limit=payload.limit,
     )
