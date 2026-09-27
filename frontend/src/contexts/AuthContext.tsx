@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, type ReactNode } from "react";
 import type { UserInfo } from "@/lib/api/types";
-import { AuthContext } from "./authContext";
+import { AuthContext } from "./auth-context";
 import {
   loginUser as apiLogin,
   registerUser as apiRegister,

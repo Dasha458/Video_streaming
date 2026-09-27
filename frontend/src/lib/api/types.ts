@@ -146,15 +146,21 @@ export interface Category {
   name: string;
 }
 
+interface StoredFile {
+  file_id: string;
+  filename: string;
+  size: number;
+}
+
 export interface UploadResponse {
   status: string;
-  files?: UploadedFile[];
+  files?: StoredFile[];
   message?: string;
 }
 
 export interface DownloadResponse {
   status: string;
-  files: DownloadVideo[];
+  files: StoredFile[];
   message?: string;
 }
 
