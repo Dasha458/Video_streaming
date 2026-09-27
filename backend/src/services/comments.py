@@ -1,4 +1,3 @@
-from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import select
@@ -67,7 +66,11 @@ class CommentService:
             user_id=user_id,
             content=content,
             parent_id=parent_id,
-            created_at=datetime.now(),
+            # created_at is left to the column's server_default (func.now(),
+            # UTC). Passing datetime.now() wrote a naive local timestamp into
+            # a TIMESTAMP WITH TIME ZONE column, which Postgres then read in
+            # the session time zone -- the same defect already fixed on
+            # watch_history.last_watched_at.
         )
         self.session.add(comment)
 

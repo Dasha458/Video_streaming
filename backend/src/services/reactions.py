@@ -56,8 +56,12 @@ async def toggle_reaction(
             )
         )
 
+    # flush, not commit: the reaction row and the denormalized counters
+    # below have to land in one transaction. Committing here first meant a
+    # failure in between left likes_count permanently out of step with the
+    # reaction rows, with nothing to reconcile it.
     try:
-        await session.commit()
+        await session.flush()
     except IntegrityError:
         await session.rollback()
         raise
@@ -69,15 +73,27 @@ async def toggle_reaction(
         .where(target_field == target_id)
         .group_by(ReactionType.name)
     )
-    counts = {name: count for name, count in result.all()}
+    tallied = {name: int(count) for name, count in result.all()}
 
     # Video/Comment carry denormalized likes_count/dislikes_count for cheap
     # reads (feed cards, analytics) -- keep them in sync with the reaction
     # rows that are the source of truth.
     parent: Any = await session.get(parent_model, target_id)
     if parent is not None:
-        parent.likes_count = counts.get("like", 0)
-        parent.dislikes_count = counts.get("dislike", 0)
-        await session.commit()
+        parent.likes_count = tallied.get("like", 0)
+        parent.dislikes_count = tallied.get("dislike", 0)
 
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        raise
+
+    # Always answer with every known reaction type. The grouped query only
+    # yields types that still have rows, so removing the last like used to
+    # return a response with no "like" key at all and clients fell back to
+    # whatever they had guessed locally.
+    all_types = (await session.execute(select(ReactionType.name))).scalars().all()
+    counts = {str(name): tallied.get(name, 0) for name in all_types}
+    counts.update(tallied)
     return counts

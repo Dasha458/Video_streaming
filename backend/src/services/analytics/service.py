@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 from typing import Any, Awaitable, Callable
 from uuid import UUID
 
-from sqlalchemy import func, literal_column, select
+from sqlalchemy import func, literal_column, select, true
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -196,21 +196,29 @@ class AnalyticsService:
                 Video.id,
                 Video.name,
                 Video.thumbnail_path,
-                func.count(VideoView.id).label("vc"),
+                func.count(VideoView.id.distinct()).label("vc"),
                 Video.likes_count,
                 func.count(Comment.id.distinct()).label("cc"),
             )
-            .outerjoin(VideoView, VideoView.video_id == Video.id)
+            .outerjoin(
+                VideoView,
+                # The period predicate belongs in the JOIN, not the WHERE.
+                # In the WHERE it discarded every row of a video whose views
+                # all fell outside the window, so that video vanished from
+                # the list entirely -- while a video with no views at all
+                # survived through the IS NULL branch and showed a 0.
+                (VideoView.video_id == Video.id)
+                & ((VideoView.viewed_at >= since) if since is not None else true()),
+            )
             .outerjoin(Comment, Comment.video_id == Video.id)
             .where(Video.channel_id == channel_id)
             .group_by(Video.id)
-            .order_by(func.count(VideoView.id).desc())
+            # DISTINCT matters: joining views and comments together produces
+            # one row per pair, so a plain count reported views x comments.
+            # The comment count next to it was already guarded this way.
+            .order_by(func.count(VideoView.id.distinct()).desc())
             .limit(limit)
         )
-        if since is not None:
-            stmt = stmt.where(
-                (VideoView.viewed_at >= since) | (VideoView.viewed_at.is_(None))
-            )
         rows = (await self.session.execute(stmt)).all()
         return [
             TopVideo(
@@ -428,14 +436,17 @@ class AnalyticsService:
             appd_stmt = appd_stmt.where(VideoWatchSession.started_at >= since)
         appd_rows = (await self.session.execute(appd_stmt)).all()
         avg_pct_per_day = _fill_daily(
-            [(r.day, int(round(float(r.pct or 0) * 100))) for r in appd_rows], since
+            [(r.day, int(round(float(r.pct or 0)))) for r in appd_rows], since
         )
 
         return EngagementResponse(
             period=period.value,
             total_watch_time_seconds=int(total_watch),
             average_view_duration_seconds=round(avg_duration, 1),
-            average_percent_viewed=round(avg_percent * 100, 1),
+            # completed_percent is stored as 0-100 by record_watch_session;
+            # this used to multiply by 100 again, so a fully watched video
+            # reported 10000 %.
+            average_percent_viewed=round(avg_percent, 1),
             engagement_rate=engagement_rate,
             watch_time_per_day=watch_time_per_day,
             avg_percent_viewed_per_day=avg_pct_per_day,
@@ -615,12 +626,15 @@ class AnalyticsService:
     async def _video_retention_buckets(
         self, video_id: UUID, since: datetime | None
     ) -> list[RetentionBucket]:
-        # completed_percent is stored as 0.0–1.0 decimal fraction
+        # completed_percent is stored as 0-100. The threshold used to be
+        # divided by 100 as if it were a 0.0-1.0 fraction, so every bucket
+        # matched any session with more than 0.1 % watched and the retention
+        # curve was flat at 100 %.
         buckets: list[RetentionBucket] = []
         for pct in (10, 25, 50, 75, 100):
             stmt = select(func.count(VideoWatchSession.id)).where(
                 VideoWatchSession.video_id == video_id,
-                VideoWatchSession.completed_percent >= pct / 100.0,
+                VideoWatchSession.completed_percent >= pct,
             )
             if since is not None:
                 stmt = stmt.where(VideoWatchSession.started_at >= since)
@@ -728,7 +742,7 @@ class AnalyticsService:
             comments=_delta(c_cur, c_prev),
             watch_time_seconds=_delta(wt_cur, wt_prev),
             average_view_duration_seconds=round(avg_duration, 1),
-            average_percent_viewed=round(avg_percent * 100, 1),
+            average_percent_viewed=round(avg_percent, 1),
             views_per_day=await self._video_views_per_day(video_id, since),
             retention=await self._video_retention_buckets(video_id, since),
             traffic_sources=await self._video_traffic_sources(video_id, since),

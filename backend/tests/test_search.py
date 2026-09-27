@@ -6,6 +6,30 @@ from unittest.mock import AsyncMock
 import pytest
 
 
+
+@pytest.fixture(autouse=True)
+def _all_hits_visible(app):
+    """Let every search hit through the database visibility check.
+
+    The endpoint confirms each hit against the database before answering,
+    so that a stale index cannot expose a private video. These tests are
+    about the search plumbing, not about visibility; the one test that is
+    overrides this itself.
+    """
+    from src.api.dependencies.services import get_video_service
+    from src.services.videos import VideoService
+
+    svc = AsyncMock(spec=VideoService)
+
+    async def _passthrough(ids):
+        return set(ids)
+
+    svc.filter_public_ready_ids = _passthrough
+    app.dependency_overrides[get_video_service] = lambda: svc
+    yield
+    app.dependency_overrides.pop(get_video_service, None)
+
+
 class TestVideoHintsEndpoint:
     """GET /api/search/video_hints — autocomplete suggestions."""
 
@@ -324,3 +348,53 @@ class TestElasticsearchCallContract:
         inspect.signature(AsyncElasticsearch.search).bind(
             None, index="videos", suggest={"video-suggest": {}}
         )
+
+
+class TestVideoSearchVisibility:
+    """POST /api/search/video — a stale index must not leak a private video."""
+
+    @staticmethod
+    def _hit(video_id):
+        return {
+            "id": str(video_id),
+            "name": "Indexed before it went private",
+            "description": "still in the index",
+            "category": "education",
+            "views": 7,
+        }
+
+    def test_hit_the_database_calls_invisible_is_dropped(self, client, app):
+        from src.api.dependencies.services import get_search_service, get_video_service
+        from src.services.videos import VideoService
+
+        visible_id = uuid.uuid4()
+        hidden_id = uuid.uuid4()
+
+        search = AsyncMock()
+        search.search_video = AsyncMock(
+            return_value={
+                "hits": [self._hit(visible_id), self._hit(hidden_id)],
+                "total": 2,
+            }
+        )
+
+        videos = AsyncMock(spec=VideoService)
+
+        async def _only_visible(ids):
+            return {i for i in ids if i == visible_id}
+
+        videos.filter_public_ready_ids = _only_visible
+
+        app.dependency_overrides[get_search_service] = lambda: search
+        app.dependency_overrides[get_video_service] = lambda: videos
+        try:
+            response = client.post("/api/search/video", json={"query": "indexed"})
+            assert response.status_code == 200
+            body = response.json()
+            returned = [r["id"] for r in body["results"]]
+            assert returned == [str(visible_id)]
+            # the dropped hit must not be counted towards the total either
+            assert body["total"] == 1
+        finally:
+            app.dependency_overrides.pop(get_search_service, None)
+            app.dependency_overrides.pop(get_video_service, None)

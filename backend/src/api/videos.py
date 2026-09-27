@@ -1,16 +1,21 @@
-from typing import Annotated, List
+from typing import TYPE_CHECKING, Annotated, List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Path, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Path, Query
 from fastapi.responses import JSONResponse
 
 from src.api.dependencies.services import get_video_service
+from src.core.background_tasks import set_video_privacy_in_es
+from src.infrastructure.elasticsearch import get_es_client
 from src.schemas.endpoint import ErrorResponse, PaginationQuery
 from src.schemas.privacy import PrivacyLevel, PrivacyResponse
 from src.schemas.reaction import ReactionRequest, ReactionResponse
 from src.schemas.video import VideoCategory, VideoPage, VideoPlayback, VideoPreviewPage
 from src.services.dependencies import get_current_user_id, get_optional_user_id
 from src.services.videos import VideoService
+
+if TYPE_CHECKING:
+    from elasticsearch import AsyncElasticsearch
 
 router_videos = APIRouter(
     prefix="/api/videos",
@@ -213,6 +218,7 @@ async def react_to_video(
 )
 async def update_privacy(
     video_id: UUID,
+    background_tasks: BackgroundTasks,
     updated_privacy: PrivacyLevel = Query(
         default="public",
         description="Privacy setting: `public` or `private`",
@@ -220,10 +226,14 @@ async def update_privacy(
     ),
     user_id: UUID = Depends(get_current_user_id),
     service: VideoService = Depends(get_video_service),
+    es: "AsyncElasticsearch" = Depends(get_es_client),
 ) -> PrivacyResponse:
     old_privacy, new_privacy = await service.update_privacy(
         video_id=video_id, user_id=user_id, privacy_name=updated_privacy
     )
+    # Nothing used to tell the search index about this, so a video switched
+    # to private kept its public document and stayed searchable.
+    background_tasks.add_task(set_video_privacy_in_es, str(video_id), new_privacy, es)
     return PrivacyResponse(
         video_id=video_id,
         old_privacy=old_privacy,

@@ -1,7 +1,8 @@
-from typing import List
+from typing import TYPE_CHECKING, Any, List, cast
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.errors.channels import (
@@ -13,6 +14,10 @@ from src.errors.channels import (
     NotSubscribedError,
 )
 from src.models import Channel, Notification, Subscription, Video
+
+if TYPE_CHECKING:
+    from sqlalchemy import CursorResult
+
 from src.schemas.channel import (
     ChannelCreate,
     ChannelResponse,
@@ -120,17 +125,29 @@ class ChannelService:
         if channel.user_id == user_id:
             raise CannotSubscribeOwnChannelError()
 
-        existing = await self.session.scalar(
-            select(Subscription).where(
-                Subscription.subscriber_id == user_id,
-                Subscription.channel_id == channel.id,
-            )
+        # Let the (subscriber_id, channel_id) unique index decide. The old
+        # SELECT-then-INSERT let two simultaneous requests both pass the
+        # check, and the loser surfaced an IntegrityError as a 500 instead
+        # of "already subscribed".
+        inserted = cast(
+            "CursorResult[Any]",
+            await self.session.execute(
+                pg_insert(Subscription)
+                .values(subscriber_id=user_id, channel_id=channel.id)
+                .on_conflict_do_nothing(index_elements=["subscriber_id", "channel_id"])
+            ),
         )
-        if existing:
+        if not inserted.rowcount:
             raise AlreadySubscribedError()
 
-        self.session.add(Subscription(subscriber_id=user_id, channel_id=channel.id))
-        channel.subscribers_count += 1
+        # Atomic increment. "channel.subscribers_count += 1" read the value
+        # into Python and wrote it back, losing one of any two concurrent
+        # subscriptions -- views_count in videos.py already does it this way.
+        await self.session.execute(
+            update(Channel)
+            .where(Channel.id == channel.id)
+            .values(subscribers_count=Channel.subscribers_count + 1)
+        )
         self.session.add(
             Notification(
                 user_id=channel.user_id,
@@ -154,7 +171,11 @@ class ChannelService:
             raise NotSubscribedError()
 
         await self.session.delete(sub)
-        channel.subscribers_count = max(0, channel.subscribers_count - 1)
+        await self.session.execute(
+            update(Channel)
+            .where(Channel.id == channel.id)
+            .values(subscribers_count=func.greatest(Channel.subscribers_count - 1, 0))
+        )
         await self.session.commit()
 
     async def get_subscriptions(self, user_id: UUID) -> List[ChannelSubscriptionItem]:

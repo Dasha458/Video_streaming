@@ -63,8 +63,13 @@ class Comment(Base):
 
     @validates("content")
     def validate_content(self, _: str, value: str) -> str:
-        assert value.strip(), "Comment cannot be empty"
-        return value.strip()
+        # Not an assert: python -O strips those, which would have let empty
+        # comments through, and an AssertionError surfaces as a 500 rather
+        # than a validation error.
+        stripped = (value or "").strip()
+        if not stripped:
+            raise ValueError("Comment cannot be empty")
+        return stripped
 
     def __repr__(self) -> str:
         return f"<Comment {self.id} by {self.user_id}>"
