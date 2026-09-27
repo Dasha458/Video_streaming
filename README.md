@@ -18,7 +18,7 @@
 | **Пошуковий рушій** | Elasticsearch | 9.2.0 |
 | **Транскодування** | FFmpeg (GPU + CPU fallback) | — |
 | **Управління секретами** | HashiCorp Vault | latest |
-| **Шлюз** | NGINX | alpine |
+| **Шлюз** | NGINX (маршрутизація) + Caddy (TLS у проді) | alpine / 2 |
 | **Моніторинг** | Prometheus + Grafana + Loki | — |
 | **Контейнеризація** | Docker + Docker Compose | 24+ |
 | **Пакетний менеджер Python** | uv | — |
@@ -139,6 +139,44 @@ curl http://localhost/api/health/ready
 
 ---
 
+## Публічне розгортання (VPS)
+
+Оркестрація — Docker Compose; Kubernetes не є цільовим середовищем (незавершений
+Helm chart лежить в `archive/helm-wip/`). Для публічного сервера додається
+`docker-compose.prod.yml`: перед nginx стає **Caddy**, який сам отримує й
+оновлює сертифікати Let's Encrypt.
+
+1. Спрямуйте A-запис домену на IP сервера (порти 80 і 443 мають бути відкриті —
+   Caddy потребує 80 для ACME-перевірки).
+2. У `Docker/.env` на сервері замість dev-профілю вкажіть:
+
+```bash
+COMPOSE_PATH_SEPARATOR=:
+COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml
+PUBLIC_DOMAIN=your.domain
+ACME_EMAIL=you@example.com
+```
+
+> **Не вмикайте dev- і prod-профілі одночасно.** Dev публікує Vault API, RabbitMQ
+> management, Grafana та MinIO console на тому ж домені.
+
+3. У Vault пропишіть публічні URL (крок 4.3), інакше OAuth-редірект і
+   session-cookie будуть на `http://localhost`:
+
+```bash
+vault kv patch secret/github_oauth   GITHUB_CALLBACK_URL=https://your.domain/api/auth/github/callback   FRONTEND_URL=https://your.domain
+```
+
+   `FRONTEND_URL` зі схемою `https` вмикає прапорець `secure` на session-cookie
+   (`src/infrastructure/auth.py`) і задає дозволені CORS-origin'и.
+
+4. `docker compose up -d` — Caddy візьме 80/443, отримає сертифікат і
+   перенаправлятиме HTTP на HTTPS. nginx більше не публікує host-порт і
+   доступний лише з внутрішньої мережі.
+
+Сертифікати зберігаються у volume `caddy_data` — не видаляйте його, інакше
+Let's Encrypt видасть нові (і можна впертись у rate limit).
+
 ## Доступ до сервісів
 
 | Сервіс | URL | Профіль |
@@ -170,7 +208,8 @@ Video_streaming/
 ├── ci/                      # GitLab CI jobs: python, node, security, deploy (build+Trivy+push), auto-pr
 ├── Docker/
 │   ├── docker-compose.yml   # 14 сервісів; продакшн-розкладка (без адмін-роутів на шлюзі)
-│   ├── docker-compose.dev.yml # dev-профіль: додає адмін-UI на шлюз (через COMPOSE_FILE у .env)
+│   ├── docker-compose.dev.yml  # dev-профіль: адмін-UI на шлюзі (через COMPOSE_FILE у .env)
+│   ├── docker-compose.prod.yml # prod-профіль: Caddy + TLS, nginx без host-порту
 │   ├── .env.example         # Шаблон інфраструктурних змінних (копіювати в .env)
 │   └── postgres/            # Dockerfile + init-скрипт створення БД
 ├── backend/                 # FastAPI BFF (Python 3.12, uv)
@@ -193,13 +232,15 @@ Video_streaming/
 ├── services/
 │   └── convertor/           # FFmpeg мікросервіс транскодування (RabbitMQ-консюмер)
 ├── gateway/
-│   ├── nginx.conf           # Прод: SPA, /api (rate limit), підписані /minio/<bucket>; лише HTTP, без TLS
+│   ├── nginx.conf           # Маршрутизація: SPA, /api (rate limit), підписані /minio/<bucket>
 │   ├── security-headers.conf # CSP/HSTS/nosniff… (include)
-│   └── dev-admin-locations.conf # DEV ONLY: Swagger, MinIO/RabbitMQ/Grafana/Prometheus/Vault UI+API
+│   ├── dev-admin-locations.conf # DEV ONLY: Swagger, MinIO/RabbitMQ/Grafana/Prometheus/Vault UI+API
+│   └── Caddyfile            # PROD ONLY: TLS-термінація, Let's Encrypt автоматично
 ├── monitoring/              # Prometheus, Grafana, Loki, Promtail конфіги
 ├── vault/
-│   └── config/              # vault.hcl (TLS наразі вимкнено) + unseal.sh (авто-розпечатування)
-└── video-streaming/         # Helm chart — WIP: лише backend/convertor/frontend, без БД/черг/сховища
+│   └── config/              # vault.hcl (HTTP — Vault лишається у внутрішній мережі) + unseal.sh
+└── archive/
+    └── helm-wip/            # Незавершений Helm chart, не деплоїться — див. archive/README.md
 ```
 
 ---

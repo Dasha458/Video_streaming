@@ -1,0 +1,33 @@
+# TLS terminator for the public deployment. Caddy obtains and renews
+# Let's Encrypt certificates on its own -- there is nothing to configure
+# beyond the domain and an email for expiry notices.
+#
+# It fronts the existing nginx gateway rather than replacing it: nginx keeps
+# owning routing, rate limits, the signed /minio/ paths and the security
+# headers, and Caddy only adds TLS and the HTTP->HTTPS redirect.
+
+{
+	email {$ACME_EMAIL}
+}
+
+{$PUBLIC_DOMAIN} {
+	encode zstd gzip
+
+	reverse_proxy nginx:80 {
+		header_up X-Forwarded-Proto {scheme}
+		header_up X-Real-IP {remote_host}
+
+		# Video uploads and HLS segments: no buffering, generous timeouts.
+		flush_interval -1
+		transport http {
+			read_timeout 30m
+			write_timeout 30m
+		}
+	}
+
+	# Uploads are capped by nginx (client_max_body_size 1000m); keep Caddy
+	# from rejecting them earlier with a smaller default.
+	request_body {
+		max_size 1000MB
+	}
+}

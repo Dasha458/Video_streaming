@@ -214,8 +214,8 @@ __marimo__/
 # Node.js (frontend) - belt and suspenders alongside frontend/.gitignore
 node_modules/
 
-# Helm dependency cache (video-streaming/ is the Helm chart directory)
-video-streaming/charts/
+# Helm dependency cache (archived chart, see archive/helm-wip/)
+archive/helm-wip/charts/
 
 # Local-only seeding tooling: machine-specific paths and test-account
 # credentials. Must never land in git via a broad `git add`.

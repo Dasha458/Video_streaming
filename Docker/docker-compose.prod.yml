@@ -1,0 +1,46 @@
+# Public-deployment additions on top of docker-compose.yml.
+#
+# Activated by putting this in Docker/.env on the server:
+#   COMPOSE_PATH_SEPARATOR=:
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.prod.yml
+#   PUBLIC_DOMAIN=your.domain
+#   ACME_EMAIL=you@example.com
+#
+# Do NOT combine it with docker-compose.dev.yml: that one publishes the
+# Vault API, RabbitMQ management, Grafana and the MinIO console on the same
+# host, which is exactly what must not be reachable from the internet.
+#
+# What it changes: Caddy takes ports 80/443 and terminates TLS (Let's
+# Encrypt, obtained and renewed automatically), nginx stops publishing a
+# host port and is reached only over the internal network.
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy_tls
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp" # HTTP/3
+    environment:
+      PUBLIC_DOMAIN: ${PUBLIC_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ../gateway/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data # certificates and ACME account -- must persist
+      - caddy_config:/config
+    depends_on:
+      - nginx
+    logging:
+      driver: "json-file"
+      options:
+        tag: "{{.ImageName}}|{{.Name}}|{{.ImageFullID}}|{{.FullID}}"
+
+  nginx:
+    # Caddy is the only way in; nginx must not be reachable directly, or the
+    # X-Forwarded-Proto it trusts could be forged by a client.
+    ports: !override []
+
+volumes:
+  caddy_data:
+  caddy_config:
