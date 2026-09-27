@@ -7,6 +7,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { queryClient } from "@/lib/queryClient";
+import { Toaster } from "@/components/ui/toast/toaster";
 import AppRouter from "@/routes/AppRouter";
 
 createRoot(document.getElementById("root")!).render(
@@ -17,6 +18,7 @@ createRoot(document.getElementById("root")!).render(
                     <AuthProvider>
                         <ThemeProvider>
                             <AppRouter />
+                            <Toaster />
                         </ThemeProvider>
                     </AuthProvider>
                 </BrowserRouter>

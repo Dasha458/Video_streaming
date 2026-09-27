@@ -1,4 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "@/components/ui/toast/use-toast";
+import { getApiErrorMessage } from "@/utils/apiError";
 import {
     addComment as addCommentApi,
     addReply as addReplyApi,
@@ -70,6 +72,11 @@ export function useComments(videoId: string | undefined) {
 
     const removeComment = useMutation({
         mutationFn: ({ id }: { id: string; parentId?: string }) => deleteCommentApi(id),
+        onError: (err) =>
+            toast({
+                title: getApiErrorMessage(err, "Could not delete the comment"),
+                variant: "destructive",
+            }),
         onSuccess: (_, { id, parentId }) =>
             patch((prev) =>
                 parentId
@@ -85,6 +92,11 @@ export function useComments(videoId: string | undefined) {
     const react = useMutation({
         mutationFn: ({ id, reaction }: { id: string; reaction: "like" | "dislike"; parentId?: string }) =>
             reactToComment(id, reaction),
+        onError: (err) =>
+            toast({
+                title: getApiErrorMessage(err, "Could not save the reaction"),
+                variant: "destructive",
+            }),
         onSuccess: (data, { id, parentId }) =>
             patchOne(id, parentId, (c) => ({
                 ...c,

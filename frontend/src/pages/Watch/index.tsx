@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import VideoPlayer from "@/components/VideoPlayer";
@@ -53,8 +53,10 @@ export default function Watch() {
     const { video, videos, error, loading, hasMore, loadMore, metaDataText, setVideo } = useVideo(active);
 
     // Watch-session heartbeat for creator analytics (watch time / retention).
-    const videoElementRef = useRef<HTMLVideoElement>(null);
-    useWatchSession(videoId || undefined, videoElementRef);
+    // State, not a ref: the player mounts only after the guards below, and a
+    // ref's identity never changes, so the hook would never see the element.
+    const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
+    useWatchSession(videoId || undefined, videoEl);
 
     if (error) return <p className="text-red-500 p-6">{error}</p>;
     if (loading || !video) return <WatchSkeleton />;
@@ -63,7 +65,7 @@ export default function Watch() {
         <div className="flex flex-col lg:flex-row gap-6 p-4">
             <div className="w-full lg:flex-1 min-w-0">
                 <div className="rounded-xl overflow-hidden bg-black">
-                    <VideoPlayer ref={videoElementRef} src={video.hlsUrl} />
+                    <VideoPlayer ref={setVideoEl} src={video.hlsUrl} />
                 </div>
 
                 <h1 className="mt-3 text-lg sm:text-xl font-bold leading-snug">{video.title}</h1>

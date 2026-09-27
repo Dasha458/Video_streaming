@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import clientApi from "@api/clientApi";
 import { getMyChannel, updateMyChannel } from "@api/channelApi";
 import type { ChannelInfo } from "@api/types";
+import { getApiErrorMessage } from "@/utils/apiError";
 
 type Tab = "account" | "channel" | "security";
 
@@ -58,7 +59,7 @@ export default function Profile() {
             await clientApi.patch("/api/auth/me", { username: username.trim() });
             setAccountMsg({ ok: true, text: "Username updated" });
         } catch (e: any) {
-            setAccountMsg({ ok: false, text: e?.response?.data?.detail ?? "Failed to update" });
+            setAccountMsg({ ok: false, text: getApiErrorMessage(e, "Failed to update") });
         } finally {
             setSavingAccount(false);
         }
@@ -72,7 +73,7 @@ export default function Profile() {
             setChannel(updated);
             setChannelMsg({ ok: true, text: "Channel updated" });
         } catch (e: any) {
-            setChannelMsg({ ok: false, text: e?.response?.data?.detail ?? "Failed to update" });
+            setChannelMsg({ ok: false, text: getApiErrorMessage(e, "Failed to update") });
         } finally {
             setSavingChannel(false);
         }
@@ -88,7 +89,7 @@ export default function Profile() {
             setPwMsg({ ok: true, text: "Password changed successfully" });
             setCurrentPw(""); setNewPw(""); setConfirmPw("");
         } catch (e: any) {
-            setPwMsg({ ok: false, text: e?.response?.data?.detail ?? "Failed to change password" });
+            setPwMsg({ ok: false, text: getApiErrorMessage(e, "Failed to change password") });
         } finally {
             setSavingPw(false);
         }

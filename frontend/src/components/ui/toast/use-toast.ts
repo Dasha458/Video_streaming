@@ -25,7 +25,9 @@ type Action =
 function reducer(state: ToasterToast[], action: Action): ToasterToast[] {
   switch (action.type) {
     case "ADD_TOAST":
-      return [...state, action.toast].slice(0, TOAST_LIMIT);
+      // Newest first: with TOAST_LIMIT = 1 an append would have kept the
+      // stale toast and dropped the one just raised.
+      return [action.toast, ...state].slice(0, TOAST_LIMIT);
     case "UPDATE_TOAST":
       return state.map((t) =>
         t.id === action.toast.id ? { ...t, ...action.toast } : t,
@@ -52,7 +54,10 @@ function notify(toasts: ToasterToast[]) {
 export function toast(props: Omit<ToasterToast, "id">) {
   const id = genId();
 
-  notify([{ ...props, id, open: true }, ...memoryState]);
+  // Goes through the reducer like every other action. It used to call
+  // notify() directly, which left ADD_TOAST unreachable and TOAST_LIMIT
+  // unenforced.
+  dispatch({ type: "ADD_TOAST", toast: { ...props, id, open: true } });
 
   setTimeout(() => {
     dispatch({ type: "REMOVE_TOAST", toastId: id });

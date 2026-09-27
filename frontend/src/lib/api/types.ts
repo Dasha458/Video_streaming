@@ -185,9 +185,10 @@ export interface DownloadResponse {
   message?: string;
 }
 
+/** Exactly what POST /api/videos/{id}/reactions returns (schemas/reaction.py).
+ *  It used to also declare likesCount/dislikesCount, which the server never
+ *  sends -- callers reading them got undefined while TypeScript said number. */
 export interface ReactionResponse {
-  likesCount: number;
-  dislikesCount: number;
   target_id: string;
   target_type: string;
   reactions: {

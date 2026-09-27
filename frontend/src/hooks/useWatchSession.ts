@@ -4,11 +4,19 @@ import { beaconWatchSession, sendWatchSession } from "@/lib/api/analyticsApi";
 /**
  * Tracks playback progress for creator-analytics watch-time / retention.
  *
- *   * A stable v4 ``session_id`` is generated once per mount.
+ *   * A stable v4 ``session_id`` is generated once per video.
  *   * While the video is playing the watched-seconds counter increments
  *     locally and a heartbeat is POSTed every ~10 seconds.
  *   * On tab close / component unmount we fire a final ``sendBeacon`` so
  *     the server gets the last cursor even after the page is gone.
+ *
+ * Takes the element itself, not a ref object: the watch page renders a
+ * skeleton until the video loads, so at first render there is no <video>
+ * yet. A ref object never changes identity, so an effect keyed on one
+ * would bail out on that first render and never run again -- which is
+ * exactly what used to happen, and why no watch session was ever recorded.
+ * Pass it via a callback ref (`ref={setVideoEl}`) so this re-runs when the
+ * player actually mounts.
  *
  * The "source" tag is derived from ``document.referrer`` the first time
  * the hook runs on this page-load; callers can override by passing
@@ -16,11 +24,14 @@ import { beaconWatchSession, sendWatchSession } from "@/lib/api/analyticsApi";
  */
 export function useWatchSession(
     videoId: string | undefined,
-    videoElementRef: React.RefObject<HTMLVideoElement | null>,
+    videoElement: HTMLVideoElement | null,
     sourceOverride?: string,
 ) {
     const sessionIdRef = useRef<string>("");
     const watchedRef = useRef<number>(0);
+    // Timestamp of the last measurement of the *current playing stretch*,
+    // or null when playback is not running. Null is what keeps a paused
+    // video from accruing time.
     const lastTickRef = useRef<number | null>(null);
     const durationRef = useRef<number>(0);
     const sentOnceRef = useRef<boolean>(false);
@@ -42,9 +53,12 @@ export function useWatchSession(
 
     // Attach player listeners + periodic heartbeat.
     useEffect(() => {
-        if (!videoId) return;
-        const el = videoElementRef.current;
-        if (!el) return;
+        const el = videoElement;
+        if (!videoId || !el) return;
+
+        // The element may already be loaded/playing by the time this runs.
+        if (el.readyState > 0) durationRef.current = Math.max(0, Math.floor(el.duration || 0));
+        if (!el.paused && !el.ended) lastTickRef.current = performance.now();
 
         const onPlay = () => { lastTickRef.current = performance.now(); };
         const onPauseOrEnded = () => {
@@ -55,7 +69,6 @@ export function useWatchSession(
             durationRef.current = Math.max(0, Math.floor(el.duration || 0));
         };
         const onTimeUpdate = () => {
-            // every video timeupdate we accumulate wallclock delta when playing.
             if (!el.paused && !el.ended) accumulate();
         };
 
@@ -67,7 +80,7 @@ export function useWatchSession(
 
         // Periodic heartbeat (10s).
         const heartbeat = setInterval(() => {
-            if (!el.paused && !el.ended) accumulate();
+            accumulate();
             flush();
         }, 10_000);
 
@@ -92,38 +105,42 @@ export function useWatchSession(
             flushBeacon();
         };
 
+        /** Adds the elapsed slice of the current playing stretch, if any. */
         function accumulate() {
+            if (lastTickRef.current === null) return; // paused: nothing accrues
             const now = performance.now();
-            if (lastTickRef.current !== null) {
-                const delta = (now - lastTickRef.current) / 1000;
-                if (delta > 0 && delta < 30) watchedRef.current += delta;
-            }
-            lastTickRef.current = now;
+            const delta = (now - lastTickRef.current) / 1000;
+            if (delta > 0 && delta < 30) watchedRef.current += delta;
+            lastTickRef.current = el!.paused || el!.ended ? null : now;
         }
 
-        function flush() {
-            if (!videoId || !sessionIdRef.current) return;
-            sendWatchSession({
+        function payload() {
+            return {
                 session_id: sessionIdRef.current,
-                video_id: videoId,
+                video_id: videoId!,
                 watched_seconds: Math.floor(watchedRef.current),
                 video_duration_seconds: durationRef.current,
                 source_type: sentOnceRef.current ? undefined : sourceRef.current,
-            }).catch(() => { /* best effort */ });
+            };
+        }
+
+        /** Nothing watched and nothing reported yet -> no session worth opening. */
+        function nothingToReport() {
+            return Math.floor(watchedRef.current) <= 0 && !sentOnceRef.current;
+        }
+
+        function flush() {
+            if (!videoId || !sessionIdRef.current || nothingToReport()) return;
+            sendWatchSession(payload()).catch(() => { /* best effort */ });
             sentOnceRef.current = true;
         }
 
         function flushBeacon() {
-            if (!videoId || !sessionIdRef.current) return;
-            beaconWatchSession({
-                session_id: sessionIdRef.current,
-                video_id: videoId,
-                watched_seconds: Math.floor(watchedRef.current),
-                video_duration_seconds: durationRef.current,
-                source_type: sentOnceRef.current ? undefined : sourceRef.current,
-            });
+            if (!videoId || !sessionIdRef.current || nothingToReport()) return;
+            beaconWatchSession(payload());
+            sentOnceRef.current = true;
         }
-    }, [videoId, videoElementRef]);
+    }, [videoId, videoElement]);
 }
 
 function cryptoUUID(): string {

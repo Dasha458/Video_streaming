@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
     getVideoAnalytics, type VideoAnalyticsData, type Period, type DeltaInt,
 } from "@/lib/api/analyticsApi";
+import { getApiErrorMessage } from "@/utils/apiError";
 
 const PERIODS: { value: Period; label: string }[] = [
     { value: "7d",   label: "Last 7 days" },
@@ -73,7 +74,7 @@ export default function VideoAnalytics() {
         setError(null);
         getVideoAnalytics(id, period)
             .then(setData)
-            .catch((e) => setError(e?.response?.data?.detail ?? "Failed to load"))
+            .catch((e) => setError(getApiErrorMessage(e, "Failed to load")))
             .finally(() => setLoading(false));
     }, [id, period]);
 
