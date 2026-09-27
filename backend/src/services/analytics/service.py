@@ -1,7 +1,7 @@
 """
-Creator analytics service.
+Creator analytics: the entry point the API talks to.
 
-Provides YouTube-Studio-style aggregations over the channel's content:
+Provides YouTube-Studio-style aggregations over a channel's content:
   * overview, content, audience
   * engagement (watch-time, retention, engagement rate)
   * real-time (last 48 h, last 60 min)
@@ -10,641 +10,83 @@ Provides YouTube-Studio-style aggregations over the channel's content:
   * watch-session heartbeat upsert
 
 All period-aware queries accept a :class:`~src.schemas.analytics.Period`
-enum value ("7d" / "28d" / "90d" / "365d" / "all").  Delta metrics always
-compare the current window with the immediately preceding one of equal
-size (for "all", the previous window is considered empty).
+value ("7d" / "28d" / "90d" / "365d" / "all"). Delta metrics compare the
+current window with the immediately preceding one of equal size (for
+"all", the previous window is considered empty).
+
+This class used to hold all of the above -- twenty-six methods and seven
+unrelated report surfaces plus the one write path, in a single file. The
+work now lives in ``channel_reports``, ``video_reports`` and ``sessions``,
+which share their SQL plumbing through ``_base.AnalyticsQueries``; what
+remains here is the facade the routers depend on, so no caller had to
+change and each report can be read, tested and altered on its own.
 """
 
-from datetime import datetime, timedelta
-from typing import Any, Awaitable, Callable, Sequence
 from uuid import UUID
 
-from sqlalchemy import func, literal_column, select, true
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.status_ids import PRIVACY_PUBLIC_ID
-from src.models import (
-    Channel,
-    Comment,
-    ReactionType,
-    Subscription,
-    Video,
-    VideoReaction,
-    VideoView,
-    VideoWatchSession,
-)
+from src.models import Channel
 from src.schemas.analytics import (
     AudienceResponse,
     ContentResponse,
-    DailyMetric,
     EngagementResponse,
-    HourlyMetric,
     OverviewResponse,
     Period,
     RealtimeResponse,
-    RetentionBucket,
-    TopVideo,
-    TrafficSourceSlice,
     TrafficSourcesResponse,
     VideoAnalyticsResponse,
-    VideoStat,
     WatchSessionAck,
     WatchSessionPing,
 )
-from src.services.analytics.windowing import (
-    _delta,
-    _fill_daily,
-    _now,
-    _window,
-)
+from src.services.analytics.channel_reports import ChannelReports
+from src.services.analytics.sessions import WatchSessions
+from src.services.analytics.video_reports import VideoReports
 
 
 class AnalyticsService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+        self._channel = ChannelReports(session)
+        self._video = VideoReports(session)
+        self._sessions = WatchSessions(session)
 
     # ---------- channel lookup -------------------------------------------
 
     async def get_channel(self, user_id: UUID) -> Channel | None:
-        result = await self.session.execute(
-            select(Channel).where(Channel.user_id == user_id)
-        )
-        return result.scalar_one_or_none()
+        return await self._channel.get_channel(user_id)
 
-    # ---------- current-vs-previous-window helper -------------------------
-    #
-    # Every period-aware metric in this service needs the same shape: run a
-    # counter for the current window, and (unless the period is "all") run
-    # it again for the immediately preceding window of equal size. This one
-    # helper replaces what used to be ~7 near-identical
-    # "current = await X(...); previous = await X(...) if prev_since else 0"
-    # blocks scattered across get_overview() and get_video_analytics().
-
-    @staticmethod
-    async def _windowed(
-        count_fn: Callable[..., Awaitable[int]],
-        *args: Any,
-        since: datetime | None,
-        prev_since: datetime | None,
-    ) -> tuple[int, int]:
-        """Call ``count_fn(*args, since, until)`` for the current window and,
-        if a preceding window exists, for that one too."""
-        current = await count_fn(*args, since, None)
-        if prev_since is None:
-            return current, 0
-        previous = await count_fn(*args, prev_since, since)
-        return current, previous
-
-    # ---------- low-level scalar helpers (channel-scoped) -----------------
-
-    async def _scalar_count(
-        self,
-        base_stmt: Any,
-        ts_col: Any,
-        since: datetime | None,
-        until: datetime | None,
-    ) -> int:
-        stmt = base_stmt
-        if since is not None:
-            stmt = stmt.where(ts_col >= since)
-        if until is not None:
-            stmt = stmt.where(ts_col < until)
-        return int((await self.session.execute(stmt)).scalar() or 0)
-
-    async def _count_views(
-        self,
-        channel_id: UUID,
-        since: datetime | None,
-        until: datetime | None = None,
-    ) -> int:
-        stmt = (
-            select(func.count(VideoView.id))
-            .join(Video, VideoView.video_id == Video.id)
-            .where(Video.channel_id == channel_id)
-        )
-        return await self._scalar_count(stmt, VideoView.viewed_at, since, until)
-
-    async def _count_reactions(
-        self,
-        channel_id: UUID,
-        reaction_name: str,
-        since: datetime | None,
-        until: datetime | None = None,
-    ) -> int:
-        stmt = (
-            select(func.count(VideoReaction.id))
-            .join(Video, VideoReaction.video_id == Video.id)
-            .join(ReactionType, VideoReaction.reaction_type_id == ReactionType.id)
-            .where(Video.channel_id == channel_id, ReactionType.name == reaction_name)
-        )
-        return await self._scalar_count(stmt, VideoReaction.created_at, since, until)
-
-    async def _count_comments(
-        self,
-        channel_id: UUID,
-        since: datetime | None,
-        until: datetime | None = None,
-    ) -> int:
-        stmt = (
-            select(func.count(Comment.id))
-            .join(Video, Comment.video_id == Video.id)
-            .where(Video.channel_id == channel_id)
-        )
-        return await self._scalar_count(stmt, Comment.created_at, since, until)
-
-    async def _sum_watch_time(
-        self,
-        channel_id: UUID,
-        since: datetime | None,
-        until: datetime | None = None,
-    ) -> int:
-        stmt = (
-            select(func.coalesce(func.sum(VideoWatchSession.watched_seconds), 0))
-            .join(Video, VideoWatchSession.video_id == Video.id)
-            .where(Video.channel_id == channel_id)
-        )
-        return await self._scalar_count(
-            stmt, VideoWatchSession.started_at, since, until
-        )
-
-    # ---------- daily series helper --------------------------------------
-    #
-    # Six queries in this file had the same shape: bucket rows by calendar
-    # day, aggregate them, order by the day, optionally cut off at `since`,
-    # then pad the gaps. Only the aggregate, the timestamp column and the
-    # joins differed. Writing it once means a change to how a day is
-    # bucketed cannot apply to five places and miss the sixth.
-
-    async def _daily_series(
-        self,
-        aggregate: Any,
-        ts_col: Any,
-        *,
-        since: datetime | None,
-        joins: Sequence[tuple[Any, Any]] = (),
-        filters: Sequence[Any] = (),
-        transform: Callable[[Any], int] = int,
-    ) -> list[DailyMetric]:
-        stmt = select(func.date(ts_col).label("day"), aggregate.label("val"))
-        for target, onclause in joins:
-            stmt = stmt.join(target, onclause)
-        if filters:
-            stmt = stmt.where(*filters)
-        if since is not None:
-            stmt = stmt.where(ts_col >= since)
-        stmt = stmt.group_by(literal_column("1")).order_by(literal_column("1"))
-
-        rows = (await self.session.execute(stmt)).all()
-        return _fill_daily([(r.day, transform(r.val)) for r in rows], since)
-
-    # ---------- OVERVIEW -------------------------------------------------
-
-    async def _overview_views_per_day(
-        self, channel_id: UUID, since: datetime | None
-    ) -> list[DailyMetric]:
-        return await self._daily_series(
-            func.count(VideoView.id),
-            VideoView.viewed_at,
-            since=since,
-            joins=[(Video, VideoView.video_id == Video.id)],
-            filters=[Video.channel_id == channel_id],
-        )
-
-    async def _overview_top_videos(
-        self, channel_id: UUID, since: datetime | None, limit: int = 5
-    ) -> list[TopVideo]:
-        stmt = (
-            select(
-                Video.id,
-                Video.name,
-                Video.thumbnail_path,
-                func.count(VideoView.id.distinct()).label("vc"),
-                Video.likes_count,
-                func.count(Comment.id.distinct()).label("cc"),
-            )
-            .outerjoin(
-                VideoView,
-                # The period predicate belongs in the JOIN, not the WHERE.
-                # In the WHERE it discarded every row of a video whose views
-                # all fell outside the window, so that video vanished from
-                # the list entirely -- while a video with no views at all
-                # survived through the IS NULL branch and showed a 0.
-                (VideoView.video_id == Video.id)
-                & ((VideoView.viewed_at >= since) if since is not None else true()),
-            )
-            .outerjoin(Comment, Comment.video_id == Video.id)
-            .where(Video.channel_id == channel_id)
-            .group_by(Video.id)
-            # DISTINCT matters: joining views and comments together produces
-            # one row per pair, so a plain count reported views x comments.
-            # The comment count next to it was already guarded this way.
-            .order_by(func.count(VideoView.id.distinct()).desc())
-            .limit(limit)
-        )
-        rows = (await self.session.execute(stmt)).all()
-        return [
-            TopVideo(
-                id=r.id,
-                title=r.name,
-                thumbnail=r.thumbnail_path or "",
-                views_count=int(r.vc or 0),
-                likes_count=int(r.likes_count or 0),
-                comments_count=int(r.cc or 0),
-            )
-            for r in rows
-        ]
+    # ---------- channel-wide reports --------------------------------------
 
     async def get_overview(
         self, channel: Channel, period: Period = Period.LAST_28
     ) -> OverviewResponse:
-        channel_id = channel.id
-        since, prev_since = _window(period)
-
-        views, prev_views = await self._windowed(
-            self._count_views, channel_id, since=since, prev_since=prev_since
-        )
-        likes, prev_likes = await self._windowed(
-            self._count_reactions,
-            channel_id,
-            "like",
-            since=since,
-            prev_since=prev_since,
-        )
-        comments, prev_comments = await self._windowed(
-            self._count_comments, channel_id, since=since, prev_since=prev_since
-        )
-        watch_time, prev_watch = await self._windowed(
-            self._sum_watch_time, channel_id, since=since, prev_since=prev_since
-        )
-
-        return OverviewResponse(
-            period=period.value,
-            total_views=_delta(views, prev_views),
-            total_subscribers=int(channel.subscribers_count or 0),
-            total_likes=_delta(likes, prev_likes),
-            total_comments=_delta(comments, prev_comments),
-            total_watch_time_seconds=_delta(watch_time, prev_watch),
-            views_per_day=await self._overview_views_per_day(channel_id, since),
-            top_videos=await self._overview_top_videos(channel_id, since),
-        )
-
-    # ---------- CONTENT --------------------------------------------------
+        return await self._channel.get_overview(channel, period)
 
     async def get_content(
         self, channel: Channel, period: Period = Period.LAST_28
     ) -> ContentResponse:
-        channel_id = channel.id
-        result = await self.session.execute(
-            select(
-                Video.id,
-                Video.name,
-                Video.thumbnail_path,
-                Video.privacy_id,
-                Video.views_count,
-                Video.likes_count,
-                Video.dislikes_count,
-                Video.created_at,
-                func.count(Comment.id).label("comments_count"),
-            )
-            .outerjoin(Comment, Comment.video_id == Video.id)
-            .where(Video.channel_id == channel_id)
-            .group_by(Video.id)
-            .order_by(Video.created_at.desc())
-        )
-        videos = [
-            VideoStat(
-                id=r.id,
-                title=r.name,
-                thumbnail=r.thumbnail_path or "",
-                privacy="public" if r.privacy_id == PRIVACY_PUBLIC_ID else "private",
-                views_count=int(r.views_count or 0),
-                likes_count=int(r.likes_count or 0),
-                dislikes_count=int(r.dislikes_count or 0),
-                comments_count=int(r.comments_count or 0),
-                created_at=r.created_at,
-            )
-            for r in result.all()
-        ]
-        return ContentResponse(period=period.value, videos=videos)
-
-    # ---------- AUDIENCE -------------------------------------------------
+        return await self._channel.get_content(channel, period)
 
     async def get_audience(
         self, channel: Channel, period: Period = Period.LAST_28
     ) -> AudienceResponse:
-        channel_id = channel.id
-        since, _ = _window(period)
-
-        subscribers_per_day = await self._daily_series(
-            func.count(Subscription.subscriber_id),
-            Subscription.created_at,
-            since=since,
-            filters=[Subscription.channel_id == channel_id],
-        )
-
-        unique_stmt = (
-            select(func.count(func.distinct(VideoView.user_id)))
-            .join(Video, VideoView.video_id == Video.id)
-            .where(Video.channel_id == channel_id, VideoView.user_id.isnot(None))
-        )
-        if since is not None:
-            unique_stmt = unique_stmt.where(VideoView.viewed_at >= since)
-        unique_viewers = int((await self.session.execute(unique_stmt)).scalar() or 0)
-
-        returning_stmt = select(func.count()).select_from(
-            select(VideoView.user_id)
-            .join(Video, VideoView.video_id == Video.id)
-            .where(Video.channel_id == channel_id, VideoView.user_id.isnot(None))
-            .group_by(VideoView.user_id)
-            .having(func.count(VideoView.id) > 1)
-            .subquery()
-        )
-        returning_viewers = int(
-            (await self.session.execute(returning_stmt)).scalar() or 0
-        )
-
-        comments_per_day = await self._daily_series(
-            func.count(Comment.id),
-            Comment.created_at,
-            since=since,
-            joins=[(Video, Comment.video_id == Video.id)],
-            filters=[Video.channel_id == channel_id],
-        )
-
-        return AudienceResponse(
-            period=period.value,
-            subscribers_per_day=subscribers_per_day,
-            unique_viewers=unique_viewers,
-            returning_viewers=returning_viewers,
-            comments_per_day=comments_per_day,
-        )
-
-    # ---------- ENGAGEMENT (watch time / retention) ----------------------
+        return await self._channel.get_audience(channel, period)
 
     async def get_engagement(
         self, channel: Channel, period: Period = Period.LAST_28
     ) -> EngagementResponse:
-        channel_id = channel.id
-        since, _ = _window(period)
-
-        total_watch = await self._sum_watch_time(channel_id, since)
-
-        # Avg view duration & avg % viewed
-        avg_stmt = (
-            select(
-                func.coalesce(func.avg(VideoWatchSession.watched_seconds), 0),
-                func.coalesce(func.avg(VideoWatchSession.completed_percent), 0),
-            )
-            .join(Video, VideoWatchSession.video_id == Video.id)
-            .where(Video.channel_id == channel_id)
-        )
-        if since is not None:
-            avg_stmt = avg_stmt.where(VideoWatchSession.started_at >= since)
-        avg_row = (await self.session.execute(avg_stmt)).one()
-        avg_duration = float(avg_row[0] or 0)
-        avg_percent = float(avg_row[1] or 0)
-
-        views = await self._count_views(channel_id, since)
-        likes = await self._count_reactions(channel_id, "like", since)
-        comments = await self._count_comments(channel_id, since)
-        engagement_rate = round((likes + comments) / views * 100, 2) if views else 0.0
-
-        # Watch time per day
-        watch_time_per_day = await self._daily_series(
-            func.coalesce(func.sum(VideoWatchSession.watched_seconds), 0),
-            VideoWatchSession.started_at,
-            since=since,
-            joins=[(Video, VideoWatchSession.video_id == Video.id)],
-            filters=[Video.channel_id == channel_id],
-        )
-
-        # Avg % viewed per day
-        avg_pct_per_day = await self._daily_series(
-            func.coalesce(func.avg(VideoWatchSession.completed_percent), 0),
-            VideoWatchSession.started_at,
-            since=since,
-            joins=[(Video, VideoWatchSession.video_id == Video.id)],
-            filters=[Video.channel_id == channel_id],
-            transform=lambda v: int(round(float(v or 0))),
-        )
-
-        return EngagementResponse(
-            period=period.value,
-            total_watch_time_seconds=int(total_watch),
-            average_view_duration_seconds=round(avg_duration, 1),
-            # completed_percent is stored as 0-100 by record_watch_session;
-            # this used to multiply by 100 again, so a fully watched video
-            # reported 10000 %.
-            average_percent_viewed=round(avg_percent, 1),
-            engagement_rate=engagement_rate,
-            watch_time_per_day=watch_time_per_day,
-            avg_percent_viewed_per_day=avg_pct_per_day,
-        )
-
-    # ---------- REAL-TIME (last 48 h) ------------------------------------
+        return await self._channel.get_engagement(channel, period)
 
     async def get_realtime(self, channel: Channel) -> RealtimeResponse:
-        channel_id = channel.id
-        now = _now()
-        since_48h = now - timedelta(hours=48)
-        since_60m = now - timedelta(minutes=60)
-
-        # per-hour bucket
-        hour_stmt = (
-            select(
-                func.date_trunc("hour", VideoView.viewed_at).label("h"),
-                func.count(VideoView.id).label("cnt"),
-            )
-            .join(Video, VideoView.video_id == Video.id)
-            .where(
-                Video.channel_id == channel_id,
-                VideoView.viewed_at >= since_48h,
-            )
-            .group_by(literal_column("1"))
-            .order_by(literal_column("1"))
-        )
-        rows = (await self.session.execute(hour_stmt)).all()
-        known = {r.h.replace(microsecond=0).isoformat(): int(r.cnt) for r in rows}
-        # fill 48 hourly buckets
-        buckets: list[HourlyMetric] = []
-        cursor = since_48h.replace(minute=0, second=0, microsecond=0)
-        stop = now.replace(minute=0, second=0, microsecond=0)
-        while cursor <= stop:
-            key = cursor.isoformat()
-            buckets.append(HourlyMetric(hour=key, count=known.get(key, 0)))
-            cursor += timedelta(hours=1)
-
-        total_48 = await self._count_views(channel_id, since_48h)
-        total_60m = await self._count_views(channel_id, since_60m)
-
-        top_stmt = (
-            select(
-                Video.id,
-                Video.name,
-                Video.thumbnail_path,
-                func.count(VideoView.id).label("vc"),
-                Video.likes_count,
-            )
-            .join(VideoView, VideoView.video_id == Video.id)
-            .where(
-                Video.channel_id == channel_id,
-                VideoView.viewed_at >= since_48h,
-            )
-            .group_by(Video.id)
-            .order_by(func.count(VideoView.id).desc())
-            .limit(5)
-        )
-        top_rows = (await self.session.execute(top_stmt)).all()
-        top = [
-            TopVideo(
-                id=r.id,
-                title=r.name,
-                thumbnail=r.thumbnail_path or "",
-                views_count=int(r.vc or 0),
-                likes_count=int(r.likes_count or 0),
-                comments_count=0,
-            )
-            for r in top_rows
-        ]
-
-        return RealtimeResponse(
-            views_last_48h=total_48,
-            views_last_60min=total_60m,
-            views_per_hour=buckets,
-            top_videos_48h=top,
-        )
-
-    # ---------- TRAFFIC SOURCES ------------------------------------------
-
-    @staticmethod
-    def _traffic_slices(rows: Any) -> list[TrafficSourceSlice]:
-        total = sum(int(r.cnt) for r in rows) or 1  # avoid div/0
-        return [
-            TrafficSourceSlice(
-                source=r.src or "unknown",
-                views=int(r.cnt),
-                percentage=round(int(r.cnt) / total * 100, 1),
-            )
-            for r in rows
-        ]
+        return await self._channel.get_realtime(channel)
 
     async def get_traffic_sources(
         self, channel: Channel, period: Period = Period.LAST_28
     ) -> TrafficSourcesResponse:
-        channel_id = channel.id
-        since, _ = _window(period)
+        return await self._channel.get_traffic_sources(channel, period)
 
-        stmt = (
-            select(
-                func.coalesce(VideoView.source_type, "unknown").label("src"),
-                func.count(VideoView.id).label("cnt"),
-            )
-            .join(Video, VideoView.video_id == Video.id)
-            .where(Video.channel_id == channel_id)
-            .group_by(literal_column("1"))
-            .order_by(func.count(VideoView.id).desc())
-        )
-        if since is not None:
-            stmt = stmt.where(VideoView.viewed_at >= since)
-        rows = (await self.session.execute(stmt)).all()
-        return TrafficSourcesResponse(
-            period=period.value,
-            total_views=sum(int(r.cnt) for r in rows),
-            sources=self._traffic_slices(rows),
-        )
-
-    # ---------- PER-VIDEO DEEP-DIVE --------------------------------------
-
-    async def _video_count(
-        self,
-        video_id: UUID,
-        model: Any,
-        id_col: Any,
-        ts_col: Any,
-        since: datetime | None,
-        until: datetime | None,
-    ) -> int:
-        stmt = select(func.count(id_col)).where(model.video_id == video_id)
-        return await self._scalar_count(stmt, ts_col, since, until)
-
-    async def _video_reaction_count(
-        self,
-        video_id: UUID,
-        reaction_name: str,
-        since: datetime | None,
-        until: datetime | None,
-    ) -> int:
-        base = (
-            select(func.count(VideoReaction.id))
-            .join(ReactionType, VideoReaction.reaction_type_id == ReactionType.id)
-            .where(
-                VideoReaction.video_id == video_id, ReactionType.name == reaction_name
-            )
-        )
-        return await self._scalar_count(base, VideoReaction.created_at, since, until)
-
-    async def _video_views_per_day(
-        self, video_id: UUID, since: datetime | None
-    ) -> list[DailyMetric]:
-        return await self._daily_series(
-            func.count(VideoView.id),
-            VideoView.viewed_at,
-            since=since,
-            filters=[VideoView.video_id == video_id],
-        )
-
-    async def _video_averages(
-        self, video_id: UUID, since: datetime | None
-    ) -> tuple[float, float]:
-        stmt = select(
-            func.coalesce(func.avg(VideoWatchSession.watched_seconds), 0),
-            func.coalesce(func.avg(VideoWatchSession.completed_percent), 0),
-        ).where(VideoWatchSession.video_id == video_id)
-        if since is not None:
-            stmt = stmt.where(VideoWatchSession.started_at >= since)
-        row = (await self.session.execute(stmt)).one()
-        return float(row[0] or 0), float(row[1] or 0)
-
-    async def _video_retention_buckets(
-        self, video_id: UUID, since: datetime | None
-    ) -> list[RetentionBucket]:
-        # completed_percent is stored as 0-100. The threshold used to be
-        # divided by 100 as if it were a 0.0-1.0 fraction, so every bucket
-        # matched any session with more than 0.1 % watched and the retention
-        # curve was flat at 100 %.
-        buckets: list[RetentionBucket] = []
-        for pct in (10, 25, 50, 75, 100):
-            stmt = select(func.count(VideoWatchSession.id)).where(
-                VideoWatchSession.video_id == video_id,
-                VideoWatchSession.completed_percent >= pct,
-            )
-            if since is not None:
-                stmt = stmt.where(VideoWatchSession.started_at >= since)
-            buckets.append(
-                RetentionBucket(
-                    percent=pct,
-                    viewers=int((await self.session.execute(stmt)).scalar() or 0),
-                )
-            )
-        return buckets
-
-    async def _video_traffic_sources(
-        self, video_id: UUID, since: datetime | None
-    ) -> list[TrafficSourceSlice]:
-        stmt = (
-            select(
-                func.coalesce(VideoView.source_type, "unknown").label("src"),
-                func.count(VideoView.id).label("cnt"),
-            )
-            .where(VideoView.video_id == video_id)
-            .group_by(literal_column("1"))
-            .order_by(func.count(VideoView.id).desc())
-        )
-        if since is not None:
-            stmt = stmt.where(VideoView.viewed_at >= since)
-        rows = (await self.session.execute(stmt)).all()
-        return self._traffic_slices(rows)
+    # ---------- per-video deep dive ---------------------------------------
 
     async def get_video_analytics(
         self,
@@ -652,121 +94,11 @@ class AnalyticsService:
         video_id: UUID,
         period: Period = Period.LAST_28,
     ) -> VideoAnalyticsResponse | None:
-        channel_id = channel.id
-        since, prev_since = _window(period)
+        return await self._video.get_video_analytics(channel, video_id, period)
 
-        video = (
-            await self.session.execute(
-                select(Video).where(
-                    Video.id == video_id, Video.channel_id == channel_id
-                )
-            )
-        ).scalar_one_or_none()
-        if video is None:
-            return None
-
-        v_cur, v_prev = await self._windowed(
-            self._video_count,
-            video_id,
-            VideoView,
-            VideoView.id,
-            VideoView.viewed_at,
-            since=since,
-            prev_since=prev_since,
-        )
-        c_cur, c_prev = await self._windowed(
-            self._video_count,
-            video_id,
-            Comment,
-            Comment.id,
-            Comment.created_at,
-            since=since,
-            prev_since=prev_since,
-        )
-        l_cur, l_prev = await self._windowed(
-            self._video_reaction_count,
-            video_id,
-            "like",
-            since=since,
-            prev_since=prev_since,
-        )
-        d_cur, d_prev = await self._windowed(
-            self._video_reaction_count,
-            video_id,
-            "dislike",
-            since=since,
-            prev_since=prev_since,
-        )
-
-        wt_stmt = select(
-            func.coalesce(func.sum(VideoWatchSession.watched_seconds), 0)
-        ).where(VideoWatchSession.video_id == video_id)
-        wt_cur = await self._scalar_count(
-            wt_stmt, VideoWatchSession.started_at, since, None
-        )
-        wt_prev = (
-            await self._scalar_count(
-                wt_stmt, VideoWatchSession.started_at, prev_since, since
-            )
-            if prev_since is not None
-            else 0
-        )
-
-        avg_duration, avg_percent = await self._video_averages(video_id, since)
-
-        return VideoAnalyticsResponse(
-            video_id=video.id,
-            title=video.name,
-            thumbnail=video.thumbnail_path or "",
-            period=period.value,
-            views=_delta(v_cur, v_prev),
-            likes=_delta(l_cur, l_prev),
-            dislikes=_delta(d_cur, d_prev),
-            comments=_delta(c_cur, c_prev),
-            watch_time_seconds=_delta(wt_cur, wt_prev),
-            average_view_duration_seconds=round(avg_duration, 1),
-            average_percent_viewed=round(avg_percent, 1),
-            views_per_day=await self._video_views_per_day(video_id, since),
-            retention=await self._video_retention_buckets(video_id, since),
-            traffic_sources=await self._video_traffic_sources(video_id, since),
-        )
-
-    # ---------- WATCH-SESSION HEARTBEAT ----------------------------------
+    # ---------- watch-session heartbeat -----------------------------------
 
     async def record_watch_session(
         self, ping: WatchSessionPing, user_id: UUID | None
     ) -> WatchSessionAck:
-        """
-        Upsert a watch session row keyed by session_id.
-
-        Heartbeats from the player are cumulative — we store the latest
-        ``watched_seconds`` cursor and recompute ``completed_percent`` on
-        every call.  First heartbeat creates the row.
-        """
-        completed = 0.0
-        if ping.video_duration_seconds > 0:
-            completed = min(
-                100.0,
-                round(ping.watched_seconds / ping.video_duration_seconds * 100, 2),
-            )
-
-        stmt = pg_insert(VideoWatchSession).values(
-            id=ping.session_id,
-            video_id=ping.video_id,
-            user_id=user_id,
-            watched_seconds=ping.watched_seconds,
-            video_duration_seconds=ping.video_duration_seconds,
-            completed_percent=completed,
-        )
-        stmt = stmt.on_conflict_do_update(
-            index_elements=[VideoWatchSession.id],
-            set_={
-                "watched_seconds": stmt.excluded.watched_seconds,
-                "video_duration_seconds": stmt.excluded.video_duration_seconds,
-                "completed_percent": stmt.excluded.completed_percent,
-                "updated_at": func.now(),
-            },
-        )
-        await self.session.execute(stmt)
-        await self.session.commit()
-        return WatchSessionAck(session_id=ping.session_id, completed_percent=completed)
+        return await self._sessions.record_watch_session(ping, user_id)
