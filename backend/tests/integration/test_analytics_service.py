@@ -16,6 +16,7 @@ from src.services.analytics import AnalyticsService
 from tests.integration.conftest import (
     REACTION_DISLIKE_ID,
     REACTION_LIKE_ID,
+    add_comment,
     add_reaction,
     add_view,
     add_watch_session,
@@ -314,3 +315,100 @@ async def test_watch_time_and_percent_series_use_their_own_aggregates(
 
     assert seconds[today] == 100  # summed
     assert percent[today] == 50  # averaged, and in percent, not a fraction
+
+
+@pytest.mark.asyncio
+async def test_engagement_rate_is_a_share_of_viewers_not_a_count_of_actions(
+    session: AsyncSession,
+):
+    """It used to be (likes + comments) / views, which broke its own scale.
+
+    One viewer who both liked and commented counted twice in the
+    numerator, so three such viewers out of three reported 200 %.
+    """
+    owner = await make_user(session)
+    channel = await make_channel(session, owner)
+    video = await make_video(session, channel)
+
+    both = await make_user(session)
+    quiet = await make_user(session)
+    for who in (both, quiet):
+        await add_view(session, video, user=who, at=now())
+    await add_reaction(session, video, both)
+    await add_comment(session, video, both)
+
+    engagement = await AnalyticsService(session).get_engagement(channel, Period.LAST_7)
+
+    # One of two viewers did something, however many things they did.
+    assert engagement.engagement_rate == 50.0
+
+
+@pytest.mark.asyncio
+async def test_engagement_rate_cannot_exceed_one_hundred(session: AsyncSession):
+    """Every viewer engaging is 100 %, and engaging twice does not add more."""
+    owner = await make_user(session)
+    channel = await make_channel(session, owner)
+    video = await make_video(session, channel)
+
+    for _ in range(3):
+        viewer = await make_user(session)
+        await add_view(session, video, user=viewer, at=now())
+        await add_reaction(session, video, viewer)
+        await add_comment(session, video, viewer)
+
+    engagement = await AnalyticsService(session).get_engagement(channel, Period.LAST_7)
+    assert engagement.engagement_rate == 100.0
+
+
+@pytest.mark.asyncio
+async def test_engaging_without_a_view_in_the_period_does_not_count(
+    session: AsyncSession,
+):
+    """The numerator is a subset of the denominator, which is the whole point.
+
+    Someone who first watched before the period and comments during it used
+    to land in the numerator while their view sat outside the denominator.
+    """
+    owner = await make_user(session)
+    channel = await make_channel(session, owner)
+    video = await make_video(session, channel)
+
+    old_hand = await make_user(session)
+    await add_view(session, video, user=old_hand, at=now() - timedelta(days=200))
+    await add_comment(session, video, old_hand, at=now())
+
+    newcomer = await make_user(session)
+    await add_view(session, video, user=newcomer, at=now())
+
+    engagement = await AnalyticsService(session).get_engagement(channel, Period.LAST_7)
+
+    # One viewer this period, and they did nothing.
+    assert engagement.engagement_rate == 0.0
+
+
+@pytest.mark.asyncio
+async def test_signed_out_viewers_lower_the_share(session: AsyncSession):
+    """They cannot react or comment, so they can only ever dilute it."""
+    owner = await make_user(session)
+    channel = await make_channel(session, owner)
+    video = await make_video(session, channel)
+
+    engager = await make_user(session)
+    await add_view(session, video, user=engager, at=now())
+    await add_reaction(session, video, engager)
+    await add_view(session, video, at=now(), viewer="anon:one")
+    await add_view(session, video, at=now(), viewer="anon:two")
+    await add_view(session, video, at=now(), viewer="fp:three")
+
+    engagement = await AnalyticsService(session).get_engagement(channel, Period.LAST_7)
+    assert engagement.engagement_rate == 25.0
+
+
+@pytest.mark.asyncio
+async def test_no_views_is_zero_not_an_error(session: AsyncSession):
+    owner = await make_user(session)
+    channel = await make_channel(session, owner)
+    await make_video(session, channel)
+
+    engagement = await AnalyticsService(session).get_engagement(channel, Period.LAST_7)
+    assert engagement.engagement_rate == 0.0

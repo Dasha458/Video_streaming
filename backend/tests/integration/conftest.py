@@ -286,6 +286,23 @@ async def add_reaction(
     await session.flush()
 
 
+async def add_comment(
+    session: AsyncSession, video, user, *, at: datetime | None = None, body="nice"
+):
+    from src.models import Comment
+
+    session.add(
+        Comment(
+            id=uuid.uuid4(),
+            video_id=video.id,
+            user_id=user.id,
+            content=body,
+            created_at=at or now(),
+        )
+    )
+    await session.flush()
+
+
 async def add_watch_session(
     session: AsyncSession,
     video,
