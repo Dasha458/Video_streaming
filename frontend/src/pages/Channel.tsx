@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { formatSubscribers } from "@/utils/formatters";
 import { useParams, Link } from "react-router-dom";
 import { Bell, Play, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,13 +14,6 @@ import { Avatar } from "@/components/common/Avatar";
 import { useVideosQuery } from "@/hooks/queries/useVideosQuery";
 
 type Tab = "videos" | "about";
-
-function formatSubs(n?: number) {
-    if (!n) return "0 subscribers";
-    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M subscribers`;
-    if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K subscribers`;
-    return `${n} subscriber${n !== 1 ? "s" : ""}`;
-}
 
 // ── Main page ───────────────────────────────────────────────────────────────
 export default function Channel() {
@@ -151,7 +145,7 @@ export default function Channel() {
                             <h1 className="text-2xl sm:text-3xl font-bold truncate">{channel.name}</h1>
                             <p className="text-sm text-muted-foreground mt-0.5">
                                 @{channel.name.toLowerCase().replace(/\s+/g, "")}
-                                {" · "}{formatSubs(subCount)}
+                                {" · "}{formatSubscribers(subCount)}
                                 {videoCount > 0 && ` · ${videoCount} video${videoCount !== 1 ? "s" : ""}`}
                             </p>
                             {bio && (
@@ -282,7 +276,7 @@ export default function Channel() {
                             <h2 className="text-base font-semibold mb-3">Stats</h2>
                             <div className="text-sm text-muted-foreground space-y-1.5">
                                 {joinedAt && <p>Joined {timeAgo(joinedAt)}</p>}
-                                <p>{formatSubs(subCount)}</p>
+                                <p>{formatSubscribers(subCount)}</p>
                                 {videoCount > 0 && <p>{videoCount} video{videoCount !== 1 ? "s" : ""}</p>}
                             </div>
                         </section>

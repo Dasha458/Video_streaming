@@ -1,14 +1,8 @@
 import type { Period } from "@/lib/api/analyticsApi";
 
-export function formatSeconds(total: number): string {
-    if (!total) return "0s";
-    const h = Math.floor(total / 3600);
-    const m = Math.floor((total % 3600) / 60);
-    const s = total % 60;
-    if (h) return `${h}h ${m}m`;
-    if (m) return `${m}m ${s}s`;
-    return `${s}s`;
-}
+// Re-exported so the Studio tabs keep one import path; the implementation
+// lives with the other formatters.
+export { formatSeconds } from "@/utils/formatters";
 
 export function formatHour(iso: string): string {
     const d = new Date(iso);

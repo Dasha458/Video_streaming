@@ -3,7 +3,7 @@ import { Check, Clock, Download, Share2, ThumbsDown, ThumbsUp } from "lucide-rea
 import { addToWatchLater } from "@api/watchLaterApi";
 import { useDownload } from "@/hooks/useDownload";
 import { useReactions } from "@/hooks/useReactions";
-import { formatCount } from "@/utils/formatters";
+import { formatCompact } from "@/utils/formatters";
 import type { VideoDetail } from "@api/types";
 import { PlaylistMenu } from "./PlaylistMenu";
 
@@ -45,14 +45,14 @@ export function VideoActions({ video, videoId, isSignedIn, onVideoUpdate }: Vide
                     className="flex items-center gap-1.5 px-4 py-2 hover:bg-muted/70 transition-colors text-sm font-medium"
                 >
                     <ThumbsUp className="h-4 w-4" />
-                    <span>{formatCount(video.likesCount ?? 0)}</span>
+                    <span>{formatCompact(video.likesCount ?? 0)}</span>
                 </button>
                 <button
                     onClick={() => handleReaction("dislike")}
                     className="flex items-center gap-1.5 px-4 py-2 hover:bg-muted/70 transition-colors text-sm font-medium"
                 >
                     <ThumbsDown className="h-4 w-4" />
-                    <span>{formatCount(video.dislikesCount ?? 0)}</span>
+                    <span>{formatCompact(video.dislikesCount ?? 0)}</span>
                 </button>
             </div>
 

@@ -113,13 +113,6 @@ export interface UserInfo {
   is_verified?: boolean;
 }
 
-export interface ChannelPreview {
-  channel_name: string;
-  channel_avatar: string;
-  subscribersCount: number;
-  videosCount: number;
-}
-
 export interface Playlist {
   id: string;
   title: string;
@@ -127,14 +120,6 @@ export interface Playlist {
   createdAt: string;
   updatedAt?: string;
   videoIds: string[];
-  isPublic: boolean;
-}
-
-export interface PlaylistPreview {
-  id: string;
-  title: string;
-  videoCount: number;
-  createdAt: string;
   isPublic: boolean;
 }
 
@@ -161,22 +146,10 @@ export interface Category {
   name: string;
 }
 
-export interface UploadedFile {
-  file_id: string;
-  filename: string;
-  size: number;
-}
-
 export interface UploadResponse {
   status: string;
   files?: UploadedFile[];
   message?: string;
-}
-
-export interface DownloadVideo {
-  file_id: string;
-  filename: string;
-  size: number;
 }
 
 export interface DownloadResponse {
@@ -218,46 +191,12 @@ export interface SearchFilters {
   includeDescription: boolean; // Also match the video description, not just the title
 }
 
-export interface SearchResponse {
-  results: VideoPreview[];
-}
 type SetVideoState = React.Dispatch<React.SetStateAction<VideoDetail | null>>;
-export interface UseVideoResult {
-  // --- Data ---
-  video: VideoDetail | null;
-  videos: VideoPreviewWithTime[];
-  comments: VideoComment[];
-  error: string | null;
-  loading: boolean;
-  hasMore: boolean;
-  page: number; // Current page for pagination
-  setVideo: SetVideoState;
-  // --- Actions consumers call ---
-  loadMore: () => Promise<void>;
-  loadMoreSearchResults: () => Promise<void>;
-  formatViews: (views: number | undefined) => string;
-  metaDataText: string;
-
-  // --- Raw setters for advanced consumers ---
-  setVideos: React.Dispatch<React.SetStateAction<VideoPreviewWithTime[]>>;
-  setPage: React.Dispatch<React.SetStateAction<number>>;
-  setLoading: React.Dispatch<React.SetStateAction<boolean>>;
-  setHasMore: React.Dispatch<React.SetStateAction<boolean>>;
-
-  // --- Search state ---
-  searchQuery: string; // Current search query text
-  setSearchQuery: React.Dispatch<React.SetStateAction<string>>;
-  setSearchFilters: React.Dispatch<
-    React.SetStateAction<SearchFilters | undefined>
-  >;
-}
 
 export interface NoSearchResultsProps {
   query: string;
 }
-export interface SearchApiResponse {
-  results: VideoPreview[];
-}
+
 export interface SearchHintsResponse {
   hints: string[];
 }

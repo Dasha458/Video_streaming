@@ -1,4 +1,5 @@
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatViews } from "@/utils/formatters";
 import { Avatar } from "@/components/common/Avatar";
 
 interface VideoCardProps {
@@ -17,13 +18,6 @@ interface VideoCardProps {
 }
 
 /** Formats raw view counts the way YouTube does: 1.2K / 3.4M. */
-const formatViews = (views: number | undefined): string => {
-    if (views === undefined) return "";
-    if (views < 1000) return `${views} views`;
-    if (views < 1_000_000) return `${(views / 1000).toFixed(1).replace(/\.0$/, "")}K views`;
-    return `${(views / 1_000_000).toFixed(1).replace(/\.0$/, "")}M views`;
-};
-
 /* ── Skeletons ─────────────────────────────────────────────────────────── */
 
 function CardSkeleton({ horizontal }: { horizontal?: boolean }) {

@@ -3,14 +3,7 @@ import { useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { useVideoQuery, useVideosQuery } from "@/hooks/queries/useVideosQuery";
 import type { VideoDetail } from "@api/types";
-
-/** Formats raw view counts the way YouTube does: 1.2K / 3.4M. */
-export function formatViews(views: number | undefined): string {
-    if (views === undefined) return "";
-    if (views < 1000) return `${views}`;
-    if (views < 1_000_000) return `${(views / 1000).toFixed(1).replace(/\.0$/, "")}K`;
-    return `${(views / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
-}
+import { formatViews } from "@/utils/formatters";
 
 /**
  * Everything the watch page needs: the video itself plus the "up next" list.
@@ -49,7 +42,7 @@ export function useVideo(activeCategory: string = "All") {
 
     const metaDataText = useMemo(() => {
         if (!video) return "";
-        return `${formatViews(video.views)} views${video.timeAgo ? " · " + video.timeAgo : ""}`;
+        return [formatViews(video.views), video.timeAgo].filter(Boolean).join(" · ");
     }, [video]);
 
     return {
@@ -60,7 +53,6 @@ export function useVideo(activeCategory: string = "All") {
         hasMore: Boolean(list.hasMore),
         loadMore: list.loadMore,
         isFetchingMore: list.isFetchingNextPage,
-        formatViews,
         metaDataText,
         setVideo,
     };

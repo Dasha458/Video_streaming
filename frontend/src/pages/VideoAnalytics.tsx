@@ -11,6 +11,7 @@ import {
     getVideoAnalytics, type VideoAnalyticsData, type Period, type DeltaInt,
 } from "@/lib/api/analyticsApi";
 import { getApiErrorMessage } from "@/utils/apiError";
+import { formatSeconds } from "@/utils/formatters";
 
 const PERIODS: { value: Period; label: string }[] = [
     { value: "7d",   label: "Last 7 days" },
@@ -19,16 +20,6 @@ const PERIODS: { value: Period; label: string }[] = [
     { value: "365d", label: "Last 365 days" },
     { value: "all",  label: "Lifetime" },
 ];
-
-function formatSeconds(total: number): string {
-    if (!total) return "0s";
-    const h = Math.floor(total / 3600);
-    const m = Math.floor((total % 3600) / 60);
-    const s = total % 60;
-    if (h) return `${h}h ${m}m`;
-    if (m) return `${m}m ${s}s`;
-    return `${s}s`;
-}
 
 function DeltaBadge({ d }: { d: DeltaInt }) {
     const up = d.delta_percent > 0;

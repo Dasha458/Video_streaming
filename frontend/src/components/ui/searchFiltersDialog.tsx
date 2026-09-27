@@ -1,4 +1,5 @@
 import {
+import { formatCompact } from "@/utils/formatters";
     Dialog,
     DialogContent,
     DialogTitle,
@@ -57,12 +58,6 @@ export function SearchFiltersDialog() {
 
     }, [active, viewRange, includeDescription, runSearch, searchQuery, setSearchFilters]);
 
-    const formatNumber = (num: number) => {
-        if (num >= 1000000) return (num / 1000000).toFixed(0) + 'M';
-        if (num >= 1000) return (num / 1000).toFixed(0) + 'k';
-        return num.toString();
-    };
-
     const isCategoryStringArray = Array.isArray(categories) && categories.length > 0 && typeof categories[0] === 'string';
 
     return (
@@ -92,9 +87,9 @@ export function SearchFiltersDialog() {
 
                 <div className="mt-6 space-y-3">
                     <div className="flex justify-between">
-                        <Label className="font-medium">Min Views: {formatNumber(viewRange[0])}</Label>
+                        <Label className="font-medium">Min Views: {formatCompact(viewRange[0])}</Label>
                         <Label className="font-medium">
-                            Max Views: {viewRange[1] >= MAX_VIEW_LIMIT ? "Any" : formatNumber(viewRange[1])}
+                            Max Views: {viewRange[1] >= MAX_VIEW_LIMIT ? "Any" : formatCompact(viewRange[1])}
                         </Label>
                     </div>
                     <Slider
