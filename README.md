@@ -232,9 +232,10 @@ Video_streaming/
 ├── services/
 │   └── convertor/           # FFmpeg мікросервіс транскодування (RabbitMQ-консюмер)
 ├── gateway/
-│   ├── nginx.conf           # Маршрутизація: SPA, /api (rate limit), підписані /minio/<bucket>
+│   ├── nginx.conf           # Маршрутизація: SPA, /api (rate limit), /minio/<bucket> з перевіркою прав
 │   ├── security-headers.conf # CSP/HSTS/nosniff… (include)
 │   ├── dev-admin-locations.conf # DEV ONLY: Swagger, MinIO/RabbitMQ/Grafana/Prometheus/Vault UI+API
+│   ├── prod-realip.conf     # PROD ONLY: за Caddy справжній IP клієнта береться з X-Real-IP
 │   └── Caddyfile            # PROD ONLY: TLS-термінація, Let's Encrypt автоматично
 ├── monitoring/              # Prometheus, Grafana, Loki, Promtail конфіги
 ├── vault/
