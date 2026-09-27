@@ -78,6 +78,9 @@ export interface EngagementData {
   total_watch_time_seconds: number;
   average_view_duration_seconds: number;
   average_percent_viewed: number;
+  /** Share of this period's viewers who liked or commented, 0-100. A share
+   *  of the audience, not a count of actions: a viewer who does both still
+   *  counts once, and it cannot exceed 100. */
   engagement_rate: number;
   watch_time_per_day: DailyMetric[];
   avg_percent_viewed_per_day: DailyMetric[];

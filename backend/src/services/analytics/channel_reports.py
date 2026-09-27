@@ -6,14 +6,16 @@ engagement, real-time and traffic sources.
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import func, literal_column, select, true
+from sqlalchemy import func, literal_column, or_, select, true
 
 from src.core.status_ids import PRIVACY_PUBLIC_ID
 from src.models import (
     Channel,
     Comment,
+    ReactionType,
     Subscription,
     Video,
+    VideoReaction,
     VideoView,
     VideoWatchSession,
 )
@@ -223,6 +225,51 @@ class ChannelReports(AnalyticsQueries):
 
     # ---------- ENGAGEMENT (watch time / retention) ----------------------
 
+    async def _count_engaged_views(
+        self, channel_id: UUID, since: datetime | None
+    ) -> int:
+        """Of the views counted for this period, how many viewers engaged.
+
+        Deliberately a subset of what :meth:`_count_views` returns, so the
+        share can never exceed 100 %. It used to be
+        ``(likes + comments) / views``, which could not stay inside its own
+        scale for two reasons: one viewer who both liked and commented
+        counted twice in the numerator, and someone who first watched
+        before the period but engaged during it counted in the numerator
+        while their view sat outside the denominator.
+
+        Only signed-in people can react or comment, so a signed-out viewer
+        can only ever lower the share -- which is the honest answer to
+        "what portion of the audience did something".
+        """
+        like = (
+            select(VideoReaction.id)
+            .join(ReactionType, VideoReaction.reaction_type_id == ReactionType.id)
+            .where(
+                VideoReaction.video_id == VideoView.video_id,
+                VideoReaction.user_id == VideoView.user_id,
+                ReactionType.name == "like",
+            )
+        )
+        comment = select(Comment.id).where(
+            Comment.video_id == VideoView.video_id,
+            Comment.user_id == VideoView.user_id,
+        )
+        if since is not None:
+            like = like.where(VideoReaction.created_at >= since)
+            comment = comment.where(Comment.created_at >= since)
+
+        stmt = (
+            select(func.count(VideoView.id))
+            .join(Video, VideoView.video_id == Video.id)
+            .where(
+                Video.channel_id == channel_id,
+                VideoView.user_id.isnot(None),
+                or_(like.exists(), comment.exists()),
+            )
+        )
+        return await self._scalar_count(stmt, VideoView.viewed_at, since, None)
+
     async def get_engagement(
         self, channel: Channel, period: Period = Period.LAST_28
     ) -> EngagementResponse:
@@ -247,9 +294,8 @@ class ChannelReports(AnalyticsQueries):
         avg_percent = float(avg_row[1] or 0)
 
         views = await self._count_views(channel_id, since)
-        likes = await self._count_reactions(channel_id, "like", since)
-        comments = await self._count_comments(channel_id, since)
-        engagement_rate = round((likes + comments) / views * 100, 2) if views else 0.0
+        engaged = await self._count_engaged_views(channel_id, since)
+        engagement_rate = round(engaged / views * 100, 2) if views else 0.0
 
         # Watch time per day
         watch_time_per_day = await self._daily_series(

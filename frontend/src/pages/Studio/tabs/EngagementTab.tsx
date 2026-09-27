@@ -15,7 +15,7 @@ export function EngagementTab({ period }: { period: Period }) {
                 <StatCard label="Total watch time" value={formatSeconds(data?.total_watch_time_seconds ?? 0)} loading={loading} />
                 <StatCard label="Avg view duration" value={formatSeconds(Math.round(data?.average_view_duration_seconds ?? 0))} loading={loading} />
                 <StatCard label="Avg % viewed" value={`${data?.average_percent_viewed ?? 0}%`} loading={loading} />
-                <StatCard label="Engagement rate" value={`${data?.engagement_rate ?? 0}%`} loading={loading} />
+                <StatCard label="Viewers who engaged" value={`${data?.engagement_rate ?? 0}%`} loading={loading} />
             </div>
 
             <ChartCard title="Watch time (seconds) per day">

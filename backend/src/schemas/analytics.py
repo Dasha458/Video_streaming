@@ -111,7 +111,10 @@ class EngagementResponse(BaseModel):
     total_watch_time_seconds: int
     average_view_duration_seconds: float
     average_percent_viewed: float  # 0–100
-    engagement_rate: float  # (likes + comments) / views, 0–100
+    #: Share of this period's viewers who liked or commented on what they
+    #: watched, 0–100. A share of the audience, not a count of actions: one
+    #: viewer who does both still counts once, and it cannot exceed 100.
+    engagement_rate: float
     watch_time_per_day: List[DailyMetric]  # seconds per day
     avg_percent_viewed_per_day: List[DailyMetric]  # 0–100 per day (count field used)
 
