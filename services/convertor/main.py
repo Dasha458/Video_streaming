@@ -114,14 +114,29 @@ async def encode_video(filename: str) -> None:
 
         await s3_client.delete_file(filename, bucket_name="videos")
 
-    except AppError:
-        await publish_status(EncodeStatusMessage(video_id=video_id, status="failed"))
-
-        logging.exception(
-            "Unhandled encoding error",
-            extra={"video_id": video_id},
-        )
+    except Exception:
+        # Every failure, not just our own AppError subclasses. A botocore
+        # ClientError, an OSError or a ValueError out of the FPS parsing
+        # used to escape this handler, so no "failed" status was ever
+        # published and the video sat in "processing" for good -- which
+        # the owner cannot even delete.
+        logging.exception("Unhandled encoding error", extra={"video_id": video_id})
+        try:
+            await publish_status(
+                EncodeStatusMessage(video_id=video_id, status="failed")
+            )
+        except Exception:
+            # The broker is the one thing that cannot report its own
+            # failure. Say so here rather than lose it.
+            logging.exception(
+                "Could not publish the failed status",
+                extra={"video_id": video_id},
+            )
 
     finally:
-        cleanup_dirs(video_id)
-        logging.debug("Cleanup completed", extra={"video_id": video_id})
+        # Never let cleanup replace the outcome above.
+        try:
+            cleanup_dirs(video_id)
+            logging.debug("Cleanup completed", extra={"video_id": video_id})
+        except AppError:
+            logging.exception("Cleanup failed", extra={"video_id": video_id})

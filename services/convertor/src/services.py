@@ -4,9 +4,12 @@ import logging
 import math
 import shutil
 import subprocess
+from collections import deque
+from functools import lru_cache
 from pathlib import Path
 
 from .exceptions import (
+    DirectoryCleanupError,
     DirectoryPrepareError,
     FFmpegExecutionError,
     FFmpegStartError,
@@ -40,10 +43,13 @@ def cleanup_dirs(video_id: str) -> None:
         logging.debug(f"Removed local dirs for {video_id}")
     except Exception as e:
         logging.error(f"Failed to cleanup local dirs for {video_id}, Error: {e}")
-        raise DirectoryPrepareError(video_id) from e
+        raise DirectoryCleanupError(video_id) from e
 
 
-def has_gpu() -> bool:
+@lru_cache(maxsize=1)
+def _probe_gpu() -> bool:
+    """Result cached: the answer cannot change while the process lives, and
+    finding it out costs a `nvidia-smi` plus a one-second ffmpeg probe."""
     try:
         subprocess.run(
             ["nvidia-smi"],
@@ -78,6 +84,11 @@ def has_gpu() -> bool:
             "NVENC initialization failed or GPU missing. Falling back to CPU encoding."
         )
         return False
+
+
+async def has_gpu() -> bool:
+    """Two blocking subprocess calls, kept off the event loop."""
+    return await asyncio.to_thread(_probe_gpu)
 
 
 def _filter_complex(ladder: tuple[Rendition, ...], use_gpu: bool) -> str:
@@ -141,7 +152,9 @@ async def stream_ffmpeg(
 
     gop_size = math.ceil(fps * segment_duration)
     logging.info(f"Calculated GOP size for -g parameter: {gop_size}")
-    use_gpu = has_gpu() and not force_cpu
+    # force_cpu first: the probe used to run even on the CPU retry, where
+    # its answer is thrown away.
+    use_gpu = (not force_cpu) and await has_gpu()
 
     # ---------- Common base command ----------
     cmd = [
@@ -208,7 +221,9 @@ async def stream_ffmpeg(
     except Exception as e:
         raise FFmpegStartError() from e
 
-    stderr_output = []
+    # Bounded: the whole encode's stderr used to be kept in memory, and only
+    # the last few lines are ever read back.
+    stderr_output: deque[str] = deque(maxlen=50)
 
     async def log_stderr() -> None:
         if process.stderr is None:
@@ -224,7 +239,9 @@ async def stream_ffmpeg(
     await log_stderr()
     rc = await process.wait()
     if rc != 0:
-        tail = "\n".join(stderr_output[-5:]) if stderr_output else "No stderr output"
+        tail = (
+            "\n".join(list(stderr_output)[-5:]) if stderr_output else "No stderr output"
+        )
         raise FFmpegExecutionError(return_code=rc, stderr=tail)
     return rc
 

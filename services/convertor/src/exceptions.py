@@ -26,6 +26,27 @@ class DirectoryCleanupError(AppError):
         super().__init__(f"Failed to cleanup local directories for video '{video_id}'")
 
 
+class StorageError(AppError):
+    """Object storage refused to do something we needed done."""
+
+    code = "STORAGE_ERROR"
+
+
+class UploadFailedError(StorageError):
+    code = "UPLOAD_FAILED"
+
+    def __init__(self, key: str, cause: Exception | None = None):
+        super().__init__(f"Failed to upload '{key}' to object storage", cause=cause)
+        self.key = key
+
+
+class PresignFailedError(StorageError):
+    code = "PRESIGN_FAILED"
+
+    def __init__(self, key: str, cause: Exception | None = None):
+        super().__init__(f"Failed to sign a URL for '{key}'", cause=cause)
+
+
 class GPUNoAvailableError(AppError):
     code = "GPU_NOT_AVAILABLE"
 
