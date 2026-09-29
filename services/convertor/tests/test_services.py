@@ -17,6 +17,7 @@ from src.exceptions import (
 )
 from src.schemas import VideoProperties
 from src.services import (
+    _probe_gpu,
     cleanup_dirs,
     get_video_properties,
     has_gpu,
@@ -75,14 +76,23 @@ async def test_prepare_and_cleanup_dirs():
 
 # ─────────────────────────────────────────────────────────────────────────────
 # has_gpu — mocks subprocess.run
+#
+# The blocking part is _probe_gpu; has_gpu() only moves it off the event
+# loop. Its answer is cached for the life of the process, so each test
+# clears the cache first.
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+def _run_probe() -> bool:
+    _probe_gpu.cache_clear()
+    return _probe_gpu()
 
 
 def test_has_gpu_returns_true_when_nvenc_available():
     """Both nvidia-smi and ffmpeg h264_nvenc succeed → True."""
     with patch("subprocess.run") as mock_run:
         mock_run.return_value = MagicMock(returncode=0)
-        result = has_gpu()
+        result = _run_probe()
     assert result is True
 
 
@@ -91,7 +101,7 @@ def test_has_gpu_returns_false_when_nvidia_smi_fails():
     with patch(
         "subprocess.run", side_effect=subprocess.CalledProcessError(1, "nvidia-smi")
     ):
-        result = has_gpu()
+        result = _run_probe()
     assert result is False
 
 
@@ -107,14 +117,14 @@ def test_has_gpu_returns_false_when_ffmpeg_nvenc_fails():
         raise subprocess.CalledProcessError(1, "ffmpeg")  # nvenc test fails
 
     with patch("subprocess.run", side_effect=side_effect):
-        result = has_gpu()
+        result = _run_probe()
     assert result is False
 
 
 def test_has_gpu_returns_false_on_any_exception():
     """Any unexpected exception → False (safe fallback)."""
     with patch("subprocess.run", side_effect=OSError("ffmpeg not found")):
-        result = has_gpu()
+        result = _run_probe()
     assert result is False
 
 
@@ -305,3 +315,26 @@ async def test_stream_ffmpeg_no_audio_flag(tmp_path):
             force_cpu=True,
         )
     assert rc == 0
+
+
+@pytest.mark.asyncio
+async def test_has_gpu_hands_back_the_probe_result_without_blocking():
+    """has_gpu only moves the blocking probe off the event loop."""
+    _probe_gpu.cache_clear()
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        assert await has_gpu() is True
+    _probe_gpu.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_the_probe_answer_is_reused():
+    """Two subprocess calls, one of them a second of ffmpeg, per encode."""
+    _probe_gpu.cache_clear()
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0)
+        await has_gpu()
+        calls_after_first = mock_run.call_count
+        await has_gpu()
+        assert mock_run.call_count == calls_after_first
+    _probe_gpu.cache_clear()

@@ -6,6 +6,12 @@ from aiobotocore.session import AioBaseClient, get_session
 from botocore.exceptions import ClientError
 
 from src.config import get_github_oauth_settings, get_s3_settings
+from src.errors.files import (
+    FileNotFoundS3Error,
+    S3DeletionError,
+    S3DownloadError,
+    VideoUploadFailedError,
+)
 
 PART_SIZE = 1024 * 1024 * 10
 
@@ -81,14 +87,14 @@ class S3Client:
     async def upload_file(
         self, filename: str, file_obj: BinaryIO, bucket_name: Optional[str] = None
     ) -> None:
-        upload_id = None
         if not bucket_name:
             raise ValueError("bucket_name must be provided")
         elif bucket_name not in self.bucket_names:
             raise ValueError("bucket_name is not in bucket_names")
 
-        try:
-            async with self._get_client() as client:
+        async with self._get_client() as client:
+            upload_id = None
+            try:
                 resp = await client.create_multipart_upload(
                     Bucket=bucket_name,
                     Key=filename,
@@ -119,12 +125,29 @@ class S3Client:
                     MultipartUpload={"Parts": parts},
                 )
                 logging.info(f"File {filename} uploaded to {bucket_name}")
-        except ClientError as e:
-            if upload_id is not None:
-                await client.abort_multipart_upload(
-                    Bucket=bucket_name, Key=filename, UploadId=upload_id
-                )
-            logging.error(f"Error uploading file: {e}")
+            except (ClientError, OSError) as e:
+                # Inside the client's scope on purpose: the abort used to run
+                # after the context manager had closed the session, so the
+                # cleanup failed too and left an orphaned multipart upload --
+                # which holds storage and does not show up in a listing.
+                if upload_id is not None:
+                    try:
+                        await client.abort_multipart_upload(
+                            Bucket=bucket_name, Key=filename, UploadId=upload_id
+                        )
+                    except ClientError as abort_error:
+                        logging.error(
+                            "Could not abort multipart upload for %s: %s",
+                            filename,
+                            abort_error,
+                        )
+                logging.error(f"Error uploading file: {e}")
+                # Raised, not logged and forgotten. A swallowed failure here
+                # told the caller the upload had worked: the video row was
+                # committed, an encode job was queued for an object that was
+                # never stored, and a thumbnail path was recorded pointing at
+                # nothing.
+                raise VideoUploadFailedError() from e
 
     async def delete_file(
         self, object_name: str, bucket_name: Optional[str] = None
@@ -140,6 +163,34 @@ class S3Client:
                 logging.info(f"File {object_name} deleted from {bucket_name}")
         except ClientError as e:
             logging.error(f"Error deleting file: {e}")
+            # delete_video wraps its deletions in a rollback that could never
+            # run while this was swallowed.
+            raise S3DeletionError() from e
+
+    async def list_keys(
+        self, prefix: str, bucket_name: Optional[str] = None
+    ) -> list[str]:
+        """Every object key under `prefix`.
+
+        Deletion needs this because the original upload keeps whatever
+        extension it arrived with, so its key cannot be derived from the
+        video id alone.
+        """
+        if not bucket_name:
+            raise ValueError("bucket_name must be provided")
+        elif bucket_name not in self.bucket_names:
+            raise ValueError("bucket_name is not in bucket_names")
+
+        keys: list[str] = []
+        try:
+            async with self._get_client() as client:
+                paginator = client.get_paginator("list_objects_v2")
+                async for page in paginator.paginate(Bucket=bucket_name, Prefix=prefix):
+                    keys.extend(o["Key"] for o in page.get("Contents", []))
+        except ClientError as e:
+            logging.error(f"Error listing '{prefix}' in '{bucket_name}': {e}")
+            raise S3DeletionError() from e
+        return keys
 
     async def delete_prefix(
         self, prefix: str, bucket_name: Optional[str] = None
@@ -263,6 +314,13 @@ class S3Client:
                 )
         except ClientError as e:
             logging.error(f"Error downloading file: {e}")
+            # Swallowing this ended the generator quietly, so the caller
+            # streamed an empty 200 back to the browser instead of saying
+            # the object is not there.
+            code = e.response.get("Error", {}).get("Code", "")
+            if code in ("404", "NoSuchKey", "NotFound"):
+                raise FileNotFoundS3Error() from e
+            raise S3DownloadError(object_name) from e
 
     async def generate_presigned_url(
         self,

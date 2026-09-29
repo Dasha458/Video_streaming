@@ -7,6 +7,7 @@ from aiobotocore.session import AioBaseClient, get_session
 from botocore.exceptions import ClientError
 
 from .config import get_s3_settings
+from .exceptions import PresignFailedError, UploadFailedError
 
 settings = get_s3_settings()
 PART_SIZE = 1024 * 1024 * 10
@@ -47,13 +48,21 @@ class S3Client:
     async def upload_file(
         self, filename: str, file_obj: BinaryIO, bucket_name: Optional[str] = None
     ) -> None:
-        upload_id = None
+        """Upload one object, or raise.
+
+        This used to log a ClientError and return as if nothing had
+        happened, so a failed upload travelled all the way back to
+        main.py as success and the video was announced ready while its
+        media was never stored.
+        """
         if not bucket_name:
             raise ValueError("bucket_name must be provided")
         elif bucket_name not in self.bucket_names:
             raise ValueError("bucket_name is not in bucket_names")
-        try:
-            async with self._get_client() as client:
+
+        async with self._get_client() as client:
+            upload_id = None
+            try:
                 resp = await client.create_multipart_upload(
                     Bucket=bucket_name, Key=filename
                 )
@@ -82,26 +91,43 @@ class S3Client:
                     MultipartUpload={"Parts": parts},
                 )
                 logging.info(f"File {filename} uploaded to {bucket_name}")
-        except ClientError as e:
-            if upload_id is not None:
-                await client.abort_multipart_upload(
-                    Bucket=bucket_name, Key=filename, UploadId=upload_id
-                )
-            logging.error(f"Error uploading file: {e}")
+            except (ClientError, OSError) as e:
+                # Inside the client's own scope, on purpose: the abort used
+                # to run after the context manager had closed the session,
+                # so the cleanup failed too and left an orphaned multipart
+                # upload -- which holds storage and does not appear in a
+                # normal listing.
+                if upload_id is not None:
+                    try:
+                        await client.abort_multipart_upload(
+                            Bucket=bucket_name, Key=filename, UploadId=upload_id
+                        )
+                    except ClientError as abort_error:
+                        logging.error(
+                            "Could not abort multipart upload for %s: %s",
+                            filename,
+                            abort_error,
+                        )
+                logging.error(f"Error uploading file: {e}")
+                raise UploadFailedError(filename, cause=e) from e
 
     async def upload_dir(
         self, dirname: str, directory: Path, bucket_name: Optional[str] = None
     ) -> None:
-        try:
-            for p in Path(directory).rglob("*"):
-                if p.is_file():
-                    await self.upload_file(
-                        str(dirname / p.relative_to(directory)),
-                        p.open("rb"),
-                        bucket_name,
-                    )
-        except ClientError as e:
-            logging.error(f"Error uploading dir: {e}")
+        """Upload every file under `directory`, or raise on the first failure.
+
+        Errors are not caught here any more. A half-written rendition set
+        is not something to report as done, and the caller decides what a
+        failed upload means.
+        """
+        for p in sorted(Path(directory).rglob("*")):
+            if not p.is_file():
+                continue
+            key = str(dirname / p.relative_to(directory))
+            # with-block: the handles used to be left to the garbage
+            # collector, one per segment.
+            with p.open("rb") as handle:
+                await self.upload_file(key, handle, bucket_name)
 
     async def delete_file(
         self, object_name: str, bucket_name: Optional[str] = None
@@ -123,13 +149,18 @@ class S3Client:
         bucket_name: str,
         expiry: int = 300,
     ) -> str:
-        async with self._get_client() as client:
-            url = await client.generate_presigned_url(
-                "get_object",
-                Params={"Bucket": bucket_name, "Key": object_name},
-                ExpiresIn=expiry,
-            )
-            return url
+        try:
+            async with self._get_client() as client:
+                url = await client.generate_presigned_url(
+                    "get_object",
+                    Params={"Bucket": bucket_name, "Key": object_name},
+                    ExpiresIn=expiry,
+                )
+                return url
+        except (ClientError, OSError) as e:
+            # Raised as one of ours so main.py recognises it and can report
+            # the encode as failed rather than leaving it in "processing".
+            raise PresignFailedError(object_name, cause=e) from e
 
 
 _s3_client_instance: Optional[S3Client] = None
