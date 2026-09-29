@@ -1,6 +1,9 @@
 """Tests for /api/auth/* endpoints."""
 
 from unittest.mock import AsyncMock, MagicMock
+from urllib.parse import parse_qs, urlparse
+
+import pytest
 
 from tests.conftest import TEST_USER_EMAIL, TEST_USER_USERNAME
 
@@ -305,9 +308,65 @@ class TestGitHubAuthorizeEndpoint:
         assert "authorization_url" in body
         assert "github.com" in body["authorization_url"]
 
+    def test_binds_the_flow_to_this_browser_with_a_cookie(self, client):
+        """Without it the state proves only that we issued one, not that we
+        issued it to whoever is finishing the flow."""
+        response = client.get("/api/auth/github/authorize")
+        set_cookie = response.headers["set-cookie"]
+        assert set_cookie.startswith("github_oauth_state=")
+        assert "HttpOnly" in set_cookie
+        # Lax, not Strict: the callback is a top-level navigation from
+        # GitHub, and Strict would strip the cookie from it.
+        assert "SameSite=lax" in set_cookie.lower().replace(
+            "samesite=lax", "SameSite=lax"
+        )
+
+    def test_the_state_in_the_url_matches_the_cookie(self, client):
+        import jwt as pyjwt
+
+        response = client.get("/api/auth/github/authorize")
+        url = response.json()["authorization_url"]
+        state = parse_qs(urlparse(url).query)["state"][0]
+        claims = pyjwt.decode(state, options={"verify_signature": False})
+
+        assert claims["csrf"] == response.cookies["github_oauth_state"]
+        # It used to carry no expiry, so a state stayed good forever.
+        assert claims["exp"] > claims["iat"]
+
 
 class TestGitHubCallbackEndpoint:
     """GET /api/auth/github/callback — CSRF validation."""
+
+    def test_a_state_without_its_cookie_is_refused(self, client):
+        """The attack this closes: start a flow yourself, take the valid
+        state and code it produces, and have someone else finish it --
+        which signed them into your account."""
+        authorize = client.get("/api/auth/github/authorize")
+        state = parse_qs(urlparse(authorize.json()["authorization_url"]).query)[
+            "state"
+        ][0]
+        client.cookies.clear()
+
+        response = client.get(
+            "/api/auth/github/callback",
+            params={"code": "somecode", "state": state},
+            follow_redirects=False,
+        )
+        assert response.status_code == 400
+
+    def test_a_state_with_someone_elses_cookie_is_refused(self, client):
+        authorize = client.get("/api/auth/github/authorize")
+        state = parse_qs(urlparse(authorize.json()["authorization_url"]).query)[
+            "state"
+        ][0]
+        client.cookies.set("github_oauth_state", "not-the-one-we-issued")
+
+        response = client.get(
+            "/api/auth/github/callback",
+            params={"code": "somecode", "state": state},
+            follow_redirects=False,
+        )
+        assert response.status_code == 400
 
     def test_invalid_state_returns_400(self, client):
         response = client.get(
@@ -323,13 +382,36 @@ class TestGitHubCallbackEndpoint:
         )
         assert response.status_code == 400  # app maps ValidationError → 400
 
+    def test_the_state_cookie_is_cleared_once_the_flow_is_done(
+        self, client, app, mock_user
+    ):
+        """One flow, one state."""
+        from src.api.dependencies.services import get_github_oauth_service
+
+        mock_service = AsyncMock()
+        mock_service.validate_state = lambda state, cookie: None
+        mock_service.exchange_code_for_user = AsyncMock(return_value=mock_user)
+        app.dependency_overrides[get_github_oauth_service] = lambda: mock_service
+        try:
+            response = client.get(
+                "/api/auth/github/callback",
+                params={"code": "ok", "state": "ok"},
+                follow_redirects=False,
+            )
+            cookies = response.headers.get_list("set-cookie")
+            cleared = [c for c in cookies if c.startswith("github_oauth_state=")]
+            assert cleared, "the state cookie is not cleared"
+            assert 'github_oauth_state=""' in cleared[0] or "Max-Age=0" in cleared[0]
+        finally:
+            app.dependency_overrides.pop(get_github_oauth_service, None)
+
     def test_success_sets_cookie_and_keeps_token_out_of_the_url(
         self, client, app, mock_user
     ):
         from src.api.dependencies.services import get_github_oauth_service
 
         mock_service = AsyncMock()
-        mock_service.validate_state = lambda state: None
+        mock_service.validate_state = lambda state, cookie: None
         mock_service.exchange_code_for_user = AsyncMock(return_value=mock_user)
         app.dependency_overrides[get_github_oauth_service] = lambda: mock_service
         try:
@@ -342,8 +424,103 @@ class TestGitHubCallbackEndpoint:
             location = response.headers["location"]
             assert location.endswith("/auth/callback")
             assert "token=" not in location
-            set_cookie = response.headers["set-cookie"]
-            assert set_cookie.startswith("access_token=")
-            assert "HttpOnly" in set_cookie
+            # Two cookies now: the session, and the state being cleared.
+            session = next(
+                c
+                for c in response.headers.get_list("set-cookie")
+                if c.startswith("access_token=")
+            )
+            assert "HttpOnly" in session
         finally:
             app.dependency_overrides.pop(get_github_oauth_service, None)
+
+
+_TEST_JWT_SECRET = "0123456789abcdef0123456789abcdef0123456789abcdef"
+
+
+class TestOAuthStateBinding:
+    """GitHubOAuthService.validate_state — the rule itself.
+
+    A signature proves the server issued some state. It does not prove the
+    server issued *this* state to *this* browser, which is what stops an
+    attacker starting a flow and having someone else complete it.
+    """
+
+    @staticmethod
+    def _service():
+        from src.config import GitHubOAuthSettings, JWTSettings
+        from src.services.github_oauth_service import GitHubOAuthService
+
+        return GitHubOAuthService(
+            session=AsyncMock(),
+            github_oauth_client=AsyncMock(),
+            github_settings=GitHubOAuthSettings(
+                GITHUB_CLIENT_ID="id",
+                GITHUB_CLIENT_SECRET="secret",
+                GITHUB_CALLBACK_URL="http://localhost/api/auth/github/callback",
+                FRONTEND_URL="http://localhost",
+            ),
+            jwt_settings=JWTSettings(JWT_SECRET=_TEST_JWT_SECRET),
+        )
+
+    def _state(self, csrf: str, **overrides) -> str:
+        import time
+
+        import jwt as pyjwt
+
+        now = int(time.time())
+        claims = {"csrf": csrf, "iat": now, "exp": now + 600}
+        claims.update(overrides)
+        return pyjwt.encode(claims, _TEST_JWT_SECRET, algorithm="HS256")
+
+    def test_a_matching_cookie_passes(self):
+        self._service().validate_state(self._state("abc"), "abc")
+
+    def test_no_cookie_is_refused(self):
+        from src.errors.auth import InvalidOAuthStateError
+
+        with pytest.raises(InvalidOAuthStateError):
+            self._service().validate_state(self._state("abc"), None)
+
+    def test_a_different_cookie_is_refused(self):
+        from src.errors.auth import InvalidOAuthStateError
+
+        with pytest.raises(InvalidOAuthStateError):
+            self._service().validate_state(self._state("abc"), "xyz")
+
+    def test_an_expired_state_is_refused(self):
+        import time
+
+        from src.errors.auth import InvalidOAuthStateError
+
+        past = int(time.time()) - 10
+        with pytest.raises(InvalidOAuthStateError):
+            self._service().validate_state(
+                self._state("abc", exp=past, iat=past - 600), "abc"
+            )
+
+    def test_a_state_without_an_expiry_is_refused(self):
+        """It used to carry none, so one stayed good forever."""
+        import jwt as pyjwt
+
+        from src.errors.auth import InvalidOAuthStateError
+
+        no_exp = pyjwt.encode({"csrf": "abc"}, _TEST_JWT_SECRET, algorithm="HS256")
+        with pytest.raises(InvalidOAuthStateError):
+            self._service().validate_state(no_exp, "abc")
+
+    def test_a_state_signed_by_someone_else_is_refused(self):
+        import time
+
+        import jwt as pyjwt
+
+        from src.errors.auth import InvalidOAuthStateError
+
+        now = int(time.time())
+        forged = pyjwt.encode(
+            {"csrf": "abc", "iat": now, "exp": now + 600},
+            "not-our-secret",
+            algorithm="HS256",
+        )
+        with pytest.raises(InvalidOAuthStateError):
+            self._service().validate_state(forged, "abc")

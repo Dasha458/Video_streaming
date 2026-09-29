@@ -1,4 +1,5 @@
 import secrets
+import time
 
 import bcrypt
 import httpx
@@ -20,6 +21,11 @@ from src.models import OAuthAccount, User
 
 GITHUB_OAUTH_NAME = "github"
 
+#: Holds the value the state must match. Short-lived: it only has to
+#: survive the round trip to GitHub and back.
+STATE_COOKIE_NAME = "github_oauth_state"
+STATE_TTL_SECONDS = 600
+
 
 class GitHubOAuthService:
     def __init__(
@@ -34,23 +40,48 @@ class GitHubOAuthService:
         self.github_settings = github_settings
         self.jwt_settings = jwt_settings
 
-    async def build_authorization_url(self) -> str:
+    async def build_authorization_url(self) -> tuple[str, str]:
+        """The URL to send the browser to, and the value to put in a cookie.
+
+        The caller must set that value as a cookie and hand it back on the
+        callback. A signature alone proves only that *we* issued the state,
+        not that we issued it to *this* browser -- so an attacker could
+        start their own flow, take the valid state and code it produced,
+        and have a victim complete the callback, signing the victim into
+        the attacker's account.
+        """
+        csrf = secrets.token_urlsafe(32)
+        now = int(time.time())
         state = pyjwt.encode(
-            {"csrf": secrets.token_urlsafe(16)},
+            {"csrf": csrf, "iat": now, "exp": now + STATE_TTL_SECONDS},
             self.jwt_settings.JWT_SECRET,
             algorithm="HS256",
         )
-        return await self.github_oauth_client.get_authorization_url(
+        url = await self.github_oauth_client.get_authorization_url(
             redirect_uri=self.github_settings.GITHUB_CALLBACK_URL,
             state=state,
             scope=["user:email"],
         )
+        return url, csrf
 
-    def validate_state(self, state: str) -> None:
+    def validate_state(self, state: str, cookie_value: str | None) -> None:
+        """Signed by us, not expired, and issued to this browser."""
+        if not cookie_value:
+            raise InvalidOAuthStateError()
         try:
-            pyjwt.decode(state, self.jwt_settings.JWT_SECRET, algorithms=["HS256"])
+            claims = pyjwt.decode(
+                state,
+                self.jwt_settings.JWT_SECRET,
+                algorithms=["HS256"],
+                # The state used to carry no expiry at all, so one stayed
+                # good forever.
+                options={"require": ["exp", "csrf"]},
+            )
         except pyjwt.PyJWTError as e:
             raise InvalidOAuthStateError() from e
+
+        if not secrets.compare_digest(str(claims.get("csrf", "")), cookie_value):
+            raise InvalidOAuthStateError()
 
     async def _fetch_github_user_email(self, access_token: str) -> tuple[dict, str]:
         async with httpx.AsyncClient() as client:
@@ -142,7 +173,13 @@ class GitHubOAuthService:
 
         new_oauth = OAuthAccount(
             oauth_name=GITHUB_OAUTH_NAME,
-            access_token=access_token,
+            # Deliberately not the token. It was stored here and never read
+            # by anything -- a live credential for someone's GitHub account
+            # sitting in our database for no purpose. We use it once, above,
+            # to read their email, and have no further need of it. The
+            # column comes from fastapi-users and is NOT NULL, so it holds
+            # an empty string rather than a secret.
+            access_token="",
             account_id=github_id,
             account_email=email,
             user_id=user.id,

@@ -5,6 +5,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.requests import Request
 from redis.asyncio import Redis
 
+from src.core.client_address import client_ip
 from src.infrastructure import get_redis
 from src.infrastructure.redis.rate_limiter import RateLimiter
 
@@ -30,10 +31,11 @@ def limit_requests(
         request: Request,
         limiter: Annotated[RateLimiter, Depends(get_rate_limiter)],
     ) -> None:
-        # request.client is None when the ASGI transport has no peer address
-        # (in-process test clients, some proxies) -- fall back to one shared
-        # bucket rather than raising AttributeError inside a dependency.
-        identifier = request.client.host if request.client else "unknown"
+        # Was request.client.host, which behind the gateway is the gateway
+        # itself: every caller shared a single bucket, so five uploads a
+        # minute was a limit on the whole platform and one user could lock
+        # everyone else out.
+        identifier = client_ip(request)
 
         is_limited = await limiter.is_limited(
             ip_address=identifier,
