@@ -13,7 +13,12 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.status_ids import STATUS_QUEUED_ID, STATUS_READY_ID, privacy_id_for
+from src.core.status_ids import (
+    STATUS_FAILED_ID,
+    STATUS_QUEUED_ID,
+    STATUS_READY_ID,
+    privacy_id_for,
+)
 from src.errors.files import (
     ChannelNotFoundError,
     DuplicateVideoError,
@@ -271,34 +276,54 @@ class FileService:
             raise S3DownloadError(object_key) from e
 
     async def delete_video(self, video_id: UUID, user_id: UUID) -> Video:
-        # Fetch video & check ownership
+        """Remove a video and everything it put in storage.
+
+        Deleting used to leave every byte behind. It removed the key
+        ``str(video.id)`` -- the original upload is stored as
+        ``<id><suffix>``, so that key matched nothing -- and never touched
+        the transcoded tree under ``<id>/``, which is the bulk of it:
+        master playlist, one playlist per rendition and every segment. The
+        client has had a ``delete_prefix`` for exactly this since it was
+        written, and nothing called it.
+
+        It also refused anything that was not ``ready``, so a video whose
+        encode failed could be seen in Studio, labelled Failed, and never
+        removed. Only a video still being worked on is held back now,
+        because the encoder is writing into that prefix.
+        """
         result = await self.session.execute(
             select(Video)
             .join(Channel, Channel.id == Video.channel_id)
             .where(
                 Video.id == video_id,
                 Channel.user_id == user_id,
-                Video.status_id == STATUS_READY_ID,
+                Video.status_id.in_((STATUS_READY_ID, STATUS_FAILED_ID)),
             )
         )
         video = result.scalar_one_or_none()
         if not video:
-            await self.session.rollback()
+            # No rollback here: nothing has been changed yet, and discarding
+            # the caller's transaction on a lookup miss throws away whatever
+            # else it had pending.
             raise VideoNotFoundError()
 
-        # S3 deletion
-        video_object_name = str(video.id)
         thumbnail_path = (
             video.thumbnail_path.lstrip("/") if video.thumbnail_path else None
         )
 
         try:
-            await self.s3_client.delete_file(video_object_name, bucket_name="videos")
+            # The transcoded output: master playlist, per-rendition
+            # playlists and every segment.
+            await self.s3_client.delete_prefix(f"{video.id}/", bucket_name="videos")
+            # The original upload, if the encoder has not removed it
+            # already. It keeps the extension it was uploaded with, which
+            # the old code left off.
+            await self._delete_original_upload(video)
             if thumbnail_path:
                 await self.s3_client.delete_file(
                     thumbnail_path.split("/")[-1], bucket_name="video-thumbnails"
                 )
-        except (BotoCoreError, ClientError) as e:
+        except (S3DeletionError, BotoCoreError, ClientError) as e:
             logging.warning(f"S3 deletion failed for {video_id}: {e}")
             await self.session.rollback()
             raise S3DeletionError() from e
@@ -307,3 +332,15 @@ class FileService:
         await self.session.delete(video)
         await self.session.commit()
         return video
+
+    async def _delete_original_upload(self, video: Video) -> None:
+        """Remove the uploaded source file, whatever extension it carries.
+
+        The convertor deletes it once an encode succeeds, so for most
+        videos there is nothing here; for one that failed, this is the
+        only copy and it is what the old key never matched.
+        """
+        prefix = str(video.id)
+        for key in await self.s3_client.list_keys(prefix, bucket_name="videos"):
+            if "/" not in key[len(prefix) :]:
+                await self.s3_client.delete_file(key, bucket_name="videos")
