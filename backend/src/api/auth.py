@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, Query, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from src.api.dependencies.services import get_auth_service, get_github_oauth_service
 from src.config import get_github_oauth_settings
 from src.infrastructure.auth import (
     clear_access_cookie,
+    cookie_transport,
     current_active_user,
     current_superuser,
     fastapi_users,
@@ -23,7 +24,11 @@ from src.schemas.user import (
     UserUpdateRequest,
 )
 from src.services.auth_service import AuthService
-from src.services.github_oauth_service import GitHubOAuthService
+from src.services.github_oauth_service import (
+    STATE_COOKIE_NAME,
+    STATE_TTL_SECONDS,
+    GitHubOAuthService,
+)
 
 _github_settings = get_github_oauth_settings()
 
@@ -128,14 +133,32 @@ async def get_user_by_username(
 @router_auth.get("/github/authorize")
 async def github_authorize(
     github_oauth_service: GitHubOAuthService = Depends(get_github_oauth_service),
-) -> dict:
-    """Return the GitHub authorization URL for the frontend to redirect to."""
-    authorization_url = await github_oauth_service.build_authorization_url()
-    return {"authorization_url": authorization_url}
+) -> JSONResponse:
+    """The GitHub authorization URL, plus the cookie that binds it here.
+
+    The cookie is what makes the state mean something: without it a valid
+    state proves only that this server issued one, not that it issued this
+    one to this browser.
+    """
+    authorization_url, csrf = await github_oauth_service.build_authorization_url()
+    response = JSONResponse(content={"authorization_url": authorization_url})
+    response.set_cookie(
+        key=STATE_COOKIE_NAME,
+        value=csrf,
+        max_age=STATE_TTL_SECONDS,
+        httponly=True,
+        secure=cookie_transport.cookie_secure,
+        # Lax, not Strict: the callback arrives as a top-level navigation
+        # from GitHub, which Strict would strip the cookie from.
+        samesite="lax",
+        path="/",
+    )
+    return response
 
 
 @router_auth.get("/github/callback")
 async def github_callback(
+    request: Request,
     code: str = Query(...),
     state: str = Query(...),
     github_oauth_service: GitHubOAuthService = Depends(get_github_oauth_service),
@@ -146,9 +169,11 @@ async def github_callback(
     a query-string token would land in browser history, server access logs
     and any Referer header the callback page happens to emit.
     """
-    github_oauth_service.validate_state(state)
+    github_oauth_service.validate_state(state, request.cookies.get(STATE_COOKIE_NAME))
     user = await github_oauth_service.exchange_code_for_user(code)
     token = await get_jwt_strategy().write_token(user)
 
     response = RedirectResponse(url=f"{_github_settings.FRONTEND_URL}/auth/callback")
+    # One flow, one state.
+    response.delete_cookie(STATE_COOKIE_NAME, path="/")
     return set_access_cookie(response, token)

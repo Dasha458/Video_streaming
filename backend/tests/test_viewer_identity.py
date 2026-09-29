@@ -9,11 +9,8 @@ import uuid
 
 from starlette.requests import Request
 
-from src.services.viewer_identity import (
-    REAL_IP_HEADER,
-    VISITOR_HEADER,
-    viewer_key,
-)
+from src.core.client_address import REAL_IP_HEADER
+from src.services.viewer_identity import VISITOR_HEADER, viewer_key
 
 
 def _Request(
