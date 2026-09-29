@@ -6,13 +6,24 @@ services:
     container_name: bff_service
     expose:
       - "8000"
+    # Wait for readiness, not just for the container to exist. The plain
+    # list form only means "started", so on a cold `docker compose up` the
+    # backend reached Elasticsearch before it was listening, failed its
+    # lifespan and exited 3 -- taking nginx down with it. Every service
+    # named here with a healthcheck is now waited on properly.
     depends_on:
-      - postgres
-      - ffmpeg
-      - minio
-      - rabbitmq
-      - elasticsearch
-      - redis
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ffmpeg:
+        condition: service_started
     volumes:
       - ../backend/alembic/versions:/app/alembic/versions
     environment:
@@ -76,6 +87,11 @@ services:
       driver: "json-file"
       options:
         tag: "{{.ImageName}}|{{.Name}}|{{.ImageFullID}}|{{.FullID}}"
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   ffmpeg:
     build:
