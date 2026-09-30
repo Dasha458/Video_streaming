@@ -72,3 +72,13 @@ class GitHubEmailNotFoundError(AppError):
 
     def __init__(self) -> None:
         super().__init__(_("GitHub account has no accessible email"))
+
+
+class WeakPasswordError(AppError):
+    """The new password does not meet the policy in UserManager."""
+
+    code = "WEAK_PASSWORD"
+    status_code = 400
+
+    def __init__(self, reason: str | None = None):
+        super().__init__(reason or _("Password does not meet the requirements"))
