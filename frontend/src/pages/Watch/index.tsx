@@ -55,7 +55,9 @@ export default function Watch() {
 
     // The player's source comes from the endpoint that checks this video's
     // privacy against the caller, not from a field on the video payload.
-    const { streamUrl } = useStreamUrlQuery(videoId || undefined);
+    const { streamUrl, isLoadingStreamUrl } = useStreamUrlQuery(
+        videoId || undefined,
+    );
 
     // Watch-session heartbeat for creator analytics (watch time / retention).
     // State, not a ref: the player mounts only after the guards below, and a
@@ -64,7 +66,9 @@ export default function Watch() {
     useWatchSession(videoId || undefined, videoEl);
 
     if (error) return <p className="text-red-500 p-6">{error}</p>;
-    if (loading || !video) return <WatchSkeleton />;
+    // The stream URL is a separate request, so the skeleton has to cover
+    // it too -- otherwise the player mounts with no source for a moment.
+    if (loading || !video || isLoadingStreamUrl) return <WatchSkeleton />;
 
     return (
         <div className="flex flex-col lg:flex-row gap-6 p-4">

@@ -92,8 +92,29 @@ const VideoPlayer = forwardRef<HTMLVideoElement, VideoPlayerProps>(
                     setActiveSubtitle(data.id ?? -1);
                 });
 
+                // A fatal error used to destroy the player outright, so one
+                // network blip or decode hiccup meant "Video unavailable"
+                // until the viewer reloaded the page. hls.js can recover
+                // from both; only give up when recovery itself fails.
+                let mediaRecoveries = 0;
                 hls.on(Hls.Events.ERROR, (_event, d) => {
-                    if (d.fatal) { setError(true); hls.destroy(); }
+                    if (!d.fatal) return;
+
+                    if (d.type === Hls.ErrorTypes.NETWORK_ERROR) {
+                        hls.startLoad();
+                        return;
+                    }
+                    if (d.type === Hls.ErrorTypes.MEDIA_ERROR && mediaRecoveries < 2) {
+                        mediaRecoveries += 1;
+                        // The second attempt also swaps the audio codec,
+                        // which is what recovers the cases the first misses.
+                        if (mediaRecoveries === 1) hls.recoverMediaError();
+                        else hls.swapAudioCodec();
+                        return;
+                    }
+
+                    setError(true);
+                    hls.destroy();
                 });
 
                 return () => { hls.destroy(); hlsRef.current = null; };
@@ -192,20 +213,26 @@ const VideoPlayer = forwardRef<HTMLVideoElement, VideoPlayerProps>(
         const toggleFullscreen = () => {
             const el = containerRef.current;
             if (!el) return;
-            if (!document.fullscreenElement) {
-                el.requestFullscreen();
-            } else {
-                document.exitFullscreen();
-            }
+            // Both reject when the browser refuses (no user gesture, a
+            // policy, an unsupported element); nothing was listening.
+            const action = document.fullscreenElement
+                ? document.exitFullscreen()
+                : el.requestFullscreen();
+            void action.catch(() => setFullscreen(!!document.fullscreenElement));
         };
 
         const togglePiP = async () => {
             const v = videoRef.current;
             if (!v) return;
-            if (document.pictureInPictureElement) {
-                await document.exitPictureInPicture();
-            } else {
-                await v.requestPictureInPicture();
+            try {
+                if (document.pictureInPictureElement) {
+                    await document.exitPictureInPicture();
+                } else {
+                    await v.requestPictureInPicture();
+                }
+            } catch {
+                // Refused by the browser; the state below reflects reality.
+                setPip(!!document.pictureInPictureElement);
             }
         };
 
@@ -228,7 +255,7 @@ const VideoPlayer = forwardRef<HTMLVideoElement, VideoPlayerProps>(
             setShowQualityMenu(false);
         };
 
-        if (error || !src) {
+        if (error) {
             return (
                 <div
                     className="w-full flex items-center justify-center bg-black text-white/60 text-sm"
@@ -236,6 +263,22 @@ const VideoPlayer = forwardRef<HTMLVideoElement, VideoPlayerProps>(
                 >
                     Video unavailable
                 </div>
+            );
+        }
+
+        // Not the same thing as an error. The source is fetched separately
+        // from the video itself -- the endpoint that issues it checks this
+        // video's privacy -- so there is a moment where we simply do not
+        // have it yet, and saying "unavailable" then is a lie that flashes
+        // on every watch page.
+        if (!src) {
+            return (
+                <div
+                    className="w-full animate-pulse bg-muted"
+                    style={{ aspectRatio: "16/9" }}
+                    aria-busy="true"
+                    aria-label="Loading video"
+                />
             );
         }
 
