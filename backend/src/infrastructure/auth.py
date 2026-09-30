@@ -2,12 +2,13 @@ import uuid
 from typing import AsyncGenerator, Optional, TypeVar
 
 from fastapi import Depends, Request, Response
-from fastapi_users import BaseUserManager, FastAPIUsers, UUIDIDMixin
+from fastapi_users import BaseUserManager, FastAPIUsers, UUIDIDMixin, models, schemas
 from fastapi_users.authentication import (
     AuthenticationBackend,
     CookieTransport,
     JWTStrategy,
 )
+from fastapi_users.exceptions import InvalidPasswordException
 from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
 from httpx_oauth.clients.github import GitHubOAuth2
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -46,6 +47,32 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
     reset_password_token_secret = jwt_settings.JWT_SECRET
     verification_token_secret = jwt_settings.JWT_SECRET
 
+    async def validate_password(
+        self, password: str, user: "schemas.UC | models.UP"
+    ) -> None:
+        """The floor. There was none at all: fastapi-users' default accepts
+        anything, nothing in the schemas set a minimum, and change-password
+        hashed whatever it was handed -- so "a" was a valid password, on
+        registration and on change alike.
+
+        Deliberately modest: a length that rules out the trivially
+        guessable, and a check that the password is not simply the email or
+        username, which is the most common way a long password is still a
+        bad one. Anything stricter is a product decision.
+        """
+        if len(password) < MIN_PASSWORD_LENGTH:
+            raise InvalidPasswordException(
+                reason=(f"Password must be at least {MIN_PASSWORD_LENGTH} characters.")
+            )
+
+        lowered = password.casefold()
+        email = (getattr(user, "email", "") or "").casefold()
+        username = (getattr(user, "username", "") or "").casefold()
+        if lowered == email or (username and lowered == username):
+            raise InvalidPasswordException(
+                reason="Password must not be your email address or username."
+            )
+
     async def on_after_register(
         self, user: User, request: Optional[Request] = None
     ) -> None:
@@ -72,6 +99,8 @@ async def get_user_manager(
 
 # Keeps RedirectResponse a RedirectResponse for the OAuth callback.
 _R = TypeVar("_R", bound=Response)
+
+MIN_PASSWORD_LENGTH = 8
 
 TOKEN_LIFETIME_SECONDS = 3600
 

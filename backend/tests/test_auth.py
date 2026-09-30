@@ -524,3 +524,89 @@ class TestOAuthStateBinding:
         )
         with pytest.raises(InvalidOAuthStateError):
             self._service().validate_state(forged, "abc")
+
+
+class TestPasswordPolicy:
+    """UserManager.validate_password.
+
+    There was none: fastapi-users' default accepts anything, no schema set
+    a minimum, and change-password hashed whatever it was handed. "a" was
+    a valid password.
+    """
+
+    @staticmethod
+    def _manager():
+        from src.infrastructure.auth import UserManager
+
+        return UserManager(AsyncMock())
+
+    @staticmethod
+    def _user(email="someone@example.com", username="someone"):
+        user = MagicMock()
+        user.email = email
+        user.username = username
+        return user
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "password", ["", "a", "short7c"], ids=["empty", "one", "seven"]
+    )
+    async def test_too_short_is_refused(self, password):
+        from fastapi_users.exceptions import InvalidPasswordException
+
+        with pytest.raises(InvalidPasswordException):
+            await self._manager().validate_password(password, self._user())
+
+    @pytest.mark.asyncio
+    async def test_eight_characters_is_enough(self):
+        await self._manager().validate_password("eightchr", self._user())
+
+    @pytest.mark.asyncio
+    async def test_the_email_itself_is_refused(self):
+        """A long password that is still the worst possible one."""
+        from fastapi_users.exceptions import InvalidPasswordException
+
+        with pytest.raises(InvalidPasswordException):
+            await self._manager().validate_password("someone@example.com", self._user())
+
+    @pytest.mark.asyncio
+    async def test_the_username_itself_is_refused(self):
+        from fastapi_users.exceptions import InvalidPasswordException
+
+        with pytest.raises(InvalidPasswordException):
+            await self._manager().validate_password(
+                "loginname", self._user(username="loginname")
+            )
+
+    @pytest.mark.asyncio
+    async def test_case_does_not_get_round_it(self):
+        from fastapi_users.exceptions import InvalidPasswordException
+
+        with pytest.raises(InvalidPasswordException):
+            await self._manager().validate_password("SomeOne@Example.COM", self._user())
+
+
+class TestChangePasswordGoesThroughThePolicy:
+    """It used to hash whatever it was handed, so a password rejected at
+    sign-up could be set a minute later."""
+
+    @pytest.mark.asyncio
+    async def test_a_weak_new_password_is_refused(self):
+        from src.errors.auth import WeakPasswordError
+        from src.services.auth_service import AuthService
+
+        user = MagicMock()
+        user.email = "someone@example.com"
+        user.username = "someone"
+
+        manager = AsyncMock()
+        manager.authenticate = AsyncMock(return_value=user)
+        from src.infrastructure.auth import UserManager
+
+        manager.validate_password = UserManager(AsyncMock()).validate_password
+
+        service = AuthService(session=AsyncMock(), user_manager=manager)
+        with pytest.raises(WeakPasswordError):
+            await service.change_password(user, "current", "a")
+
+        manager.password_helper.hash.assert_not_called()

@@ -1,4 +1,5 @@
 from fastapi.security import OAuth2PasswordRequestForm
+from fastapi_users.exceptions import InvalidPasswordException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,6 +9,7 @@ from src.errors.auth import (
     UsernameEmptyError,
     UsernameTakenError,
     UserNotFoundError,
+    WeakPasswordError,
 )
 from src.infrastructure.auth import UserManager
 from src.models import User
@@ -49,6 +51,15 @@ class AuthService:
         )
         if authenticated is None:
             raise IncorrectPasswordError()
+
+        # The same policy registration goes through. This used to hash
+        # whatever it was handed, so a password rejected at sign-up could
+        # be set here a minute later.
+        try:
+            await self.user_manager.validate_password(new_password, user)
+        except InvalidPasswordException as e:
+            raise WeakPasswordError(str(e.reason)) from e
+
         user.hashed_password = self.user_manager.password_helper.hash(new_password)
         await self.session.commit()
 
