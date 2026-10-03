@@ -9,6 +9,16 @@ import videoApi from "@api/videoApi";
 import type { VideoPreview } from "@api/types";
 import { toast } from "@/components/ui/toast/use-toast";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog";
+import { getApiErrorMessage } from "@/utils/apiError";
 
 type StatusFilter = "all" | "public" | "private" | "processing";
 
@@ -19,15 +29,40 @@ const STATUS_LABEL: Record<string, { label: string; color: string }> = {
     Queued:     { label: "Processing", color: "text-yellow-500" },
 };
 
+interface MenuAction {
+    icon: React.ReactNode;
+    label: React.ReactNode;
+    onClick: () => void | Promise<void>;
+}
+
 function VideoMenu({ video, onPrivacyChange, onDelete }: {
     video: VideoPreview;
     onPrivacyChange: (id: string, isPublic: boolean) => void;
     onDelete: (id: string) => void;
 }) {
     const navigate = useNavigate();
+    const [confirmingDelete, setConfirmingDelete] = useState(false);
+    const [deleting, setDeleting] = useState(false);
     const isPublic = (video.privacy ?? "public").toLowerCase() === "public";
 
-    const actions = [
+    const remove = async () => {
+        setDeleting(true);
+        try {
+            await videoApi.deleteVideo(video.id);
+            onDelete(video.id);
+            toast({ title: "Video deleted" });
+            setConfirmingDelete(false);
+        } catch (err) {
+            toast({
+                title: getApiErrorMessage(err, "Failed to delete video"),
+                variant: "destructive",
+            });
+        } finally {
+            setDeleting(false);
+        }
+    };
+
+    const actions: MenuAction[] = [
         {
             icon: <Play className="h-4 w-4" />,
             label: "Watch",
@@ -46,28 +81,56 @@ function VideoMenu({ video, onPrivacyChange, onDelete }: {
                     await videoApi.updateVideoPrivacy(video.id, !isPublic);
                     onPrivacyChange(video.id, !isPublic);
                     toast({ title: isPublic ? "Video set to private" : "Video set to public" });
-                } catch {
-                    toast({ title: "Failed to update privacy", variant: "destructive" });
-                }
-            },
-        },
-        {
-            icon: <Trash2 className="h-4 w-4 text-destructive" />,
-            label: <span className="text-destructive">Delete</span>,
-            onClick: async () => {
-                if (!confirm("Delete this video? This cannot be undone.")) return;
-                try {
-                    await videoApi.deleteVideo(video.id);
-                    onDelete(video.id);
-                    toast({ title: "Video deleted" });
-                } catch {
-                    toast({ title: "Failed to delete video", variant: "destructive" });
+                } catch (err) {
+                    toast({
+                        title: getApiErrorMessage(err, "Failed to update privacy"),
+                        variant: "destructive",
+                    });
                 }
             },
         },
     ];
 
+    // Only while the encoder is writing into this video's folder: the server
+    // refuses it, so offering the action would be offering a failure. A
+    // failed encode can be deleted -- that is the state people most want to
+    // clear.
+    const beingEncoded = ["Processing", "Queued"].includes(video.status ?? "");
+    if (!beingEncoded) {
+        actions.push({
+            icon: <Trash2 className="h-4 w-4 text-destructive" />,
+            label: <span className="text-destructive">Delete</span>,
+            onClick: () => setConfirmingDelete(true),
+        });
+    }
+
     return (
+        <>
+        {/* The app's own dialog, not the browser's: this was the one
+            remaining window.confirm in the frontend. */}
+        <Dialog open={confirmingDelete} onOpenChange={setConfirmingDelete}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Delete this video?</DialogTitle>
+                    <DialogDescription>
+                        {video.title || "This video"} and everything stored for it
+                        will be removed. This cannot be undone.
+                    </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                    <Button
+                        variant="outline"
+                        onClick={() => setConfirmingDelete(false)}
+                        disabled={deleting}
+                    >
+                        Cancel
+                    </Button>
+                    <Button variant="destructive" onClick={remove} disabled={deleting}>
+                        {deleting ? "Deleting…" : "Delete"}
+                    </Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
                 <button className="p-1.5 rounded-full hover:bg-muted transition-colors opacity-0 group-hover:opacity-100 shrink-0">
@@ -83,6 +146,7 @@ function VideoMenu({ video, onPrivacyChange, onDelete }: {
                 ))}
             </DropdownMenuContent>
         </DropdownMenu>
+        </>
     );
 }
 
