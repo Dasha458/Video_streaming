@@ -12,7 +12,14 @@ DATABASE_URL = (
 )
 
 config = context.config
-config.set_main_option("sqlalchemy.url", DATABASE_URL)
+
+# Only when the caller has not said where to go. A test (or anything else
+# driving Alembic programmatically) sets sqlalchemy.url or hands over a
+# live connection via config.attributes, and overwriting that here made the
+# migrations impossible to run anywhere but the configured database -- which
+# is why nothing checked them.
+if not config.get_main_option("sqlalchemy.url", None):
+    config.set_main_option("sqlalchemy.url", DATABASE_URL)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -50,6 +57,15 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
+    # A connection passed in by the caller wins: it lets the migrations run
+    # against a throwaway database without reconfiguring the application.
+    injected = config.attributes.get("connection")
+    if injected is not None:
+        context.configure(connection=injected, target_metadata=target_metadata)
+        with context.begin_transaction():
+            context.run_migrations()
+        return
+
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
