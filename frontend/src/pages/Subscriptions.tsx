@@ -21,7 +21,7 @@ export default function Subscriptions() {
         setUnsubscribingId(channelName);
         try {
             await unsubscribeFromChannel(channelName);
-            setChannels((prev) => prev.filter((c) => c.channel_name !== channelName));
+            setChannels((prev) => prev.filter((c) => c.name !== channelName));
             toast({ title: `Unsubscribed from ${channelName}` });
         } catch {
             toast({ title: "Failed to unsubscribe", variant: "destructive" });
@@ -66,14 +66,14 @@ export default function Subscriptions() {
                 <div className="flex flex-col gap-4">
                     {channels.map((channel) => (
                         <ChannelCard
-                            key={channel.channel_name}
-                            channel_avatar={channel.channel_avatar ?? undefined}
-                            channel_name={channel.channel_name}
-                            handle={`@${channel.channel_name}`}
-                            subscribers={`${channel.subscribersCount} subscribers`}
+                            key={channel.name}
+                            channel_avatar={channel.avatar_path ?? undefined}
+                            channel_name={channel.name}
+                            handle={`@${channel.name}`}
+                            subscribers={`${channel.subscribers_count} subscribers`}
                             description=""
-                            onUnsubscribe={() => handleUnsubscribe(channel.channel_name)}
-                            unsubscribing={unsubscribingId === channel.channel_name}
+                            onUnsubscribe={() => handleUnsubscribe(channel.name)}
+                            unsubscribing={unsubscribingId === channel.name}
                         />
                     ))}
                 </div>

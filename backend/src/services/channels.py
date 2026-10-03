@@ -189,11 +189,11 @@ class ChannelService:
             vc = await self._count_videos(ch.id)
             items.append(
                 ChannelSubscriptionItem(
-                    channel_name=ch.name,
-                    channel_avatar=ch.avatar_path,
-                    subscribersCount=ch.subscribers_count,
-                    videosCount=vc,
-                    createdAt=ch.created_at.isoformat(),
+                    name=ch.name,
+                    avatar_path=ch.avatar_path,
+                    subscribers_count=ch.subscribers_count,
+                    videos_count=vc,
+                    created_at=ch.created_at,
                 )
             )
         return items
@@ -227,16 +227,10 @@ class ChannelService:
             description=channel.description,
             subscribers_count=channel.subscribers_count,
             views_count=channel.views_count,
+            videos_count=videos_count,
             avatar_path=channel.avatar_path,
             background_path=channel.background_path,
             created_at=channel.created_at,
-            channel_avatar=channel.avatar_path or "",
-            channel_name=channel.name,
-            channelBanner=channel.background_path,
-            subscribersCount=channel.subscribers_count,
-            videosCount=videos_count,
-            bio=channel.description,
-            createdAt=channel.created_at.isoformat(),
-            isOwner=is_owner,
-            isSubscribed=is_subscribed,
+            is_owner=is_owner,
+            is_subscribed=is_subscribed,
         )

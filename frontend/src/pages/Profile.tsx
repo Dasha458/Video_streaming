@@ -44,8 +44,8 @@ export default function Profile() {
             getMyChannel().then((c) => {
                 if (c) {
                     setChannel(c);
-                    setChannelName(c.channel_name ?? c.name ?? "");
-                    setChannelDesc(c.description ?? c.bio ?? "");
+                    setChannelName(c.name ?? "");
+                    setChannelDesc(c.description ?? "");
                 }
             }).catch(() => {});
         }

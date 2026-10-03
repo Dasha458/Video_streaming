@@ -4,24 +4,24 @@
  * camelCase set (channel_avatar, subscribersCount, createdAt, ...) for
  * frontend convenience. Both are real and present on every response;
  * this is not duplication introduced here. */
+/** Backend src/schemas/channel.py's ChannelResponse.
+ *
+ *  It used to declare eighteen fields for six pieces of information,
+ *  because the server sent every value twice under two conventions and
+ *  nothing said which one would arrive -- so call sites read
+ *  `subscribersCount ?? subscribers_count ?? 0`. One name per value now. */
 export interface ChannelInfo {
   id: string;
   name: string;
   description?: string | null;
   subscribers_count: number;
   views_count: number;
+  videos_count: number;
   avatar_path?: string | null;
   background_path?: string | null;
   created_at: string;
-  isOwner: boolean;
-  isSubscribed: boolean;
-  channel_name: string;
-  channel_avatar: string;
-  channelBanner?: string;
-  subscribersCount: number;
-  videosCount: number;
-  bio?: string;
-  createdAt: string;
+  is_owner: boolean;
+  is_subscribed: boolean;
 }
 
 /** Backend src/schemas/channel.py's ChannelSubscriptionItem -- the actual
@@ -29,11 +29,11 @@ export interface ChannelInfo {
  * mistyped as ChannelInfo[], which claims several required fields
  * (id, isOwner, avatar_path, ...) this endpoint never sends. */
 export interface ChannelSubscriptionItem {
-  channel_name: string;
-  channel_avatar?: string | null;
-  subscribersCount: number;
-  videosCount: number;
-  createdAt: string;
+  name: string;
+  avatar_path?: string | null;
+  subscribers_count: number;
+  videos_count: number;
+  created_at: string;
 }
 
 export interface VideoPreview {
