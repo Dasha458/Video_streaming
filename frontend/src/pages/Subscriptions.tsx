@@ -3,6 +3,7 @@ import ChannelCard from "@/components/ChannelCard";
 import { getMySubscriptions, unsubscribeFromChannel } from "@/lib/api/channelApi";
 import type { ChannelSubscriptionItem } from "@/lib/api/types";
 import { toast } from "@/components/ui/toast/use-toast";
+import { getApiErrorMessage } from "@/utils/apiError";
 
 export default function Subscriptions() {
     const [channels, setChannels] = useState<ChannelSubscriptionItem[]>([]);
@@ -23,8 +24,11 @@ export default function Subscriptions() {
             await unsubscribeFromChannel(channelName);
             setChannels((prev) => prev.filter((c) => c.name !== channelName));
             toast({ title: `Unsubscribed from ${channelName}` });
-        } catch {
-            toast({ title: "Failed to unsubscribe", variant: "destructive" });
+        } catch (err) {
+            toast({
+                title: getApiErrorMessage(err, "Failed to unsubscribe"),
+                variant: "destructive",
+            });
         } finally {
             setUnsubscribingId(null);
         }
