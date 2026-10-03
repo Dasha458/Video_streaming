@@ -10,8 +10,24 @@ const TAG_COLORS: Record<string, string> = {
     "Bug Fixes": "bg-red-500/20 text-red-600 hover:bg-red-500/30",
 };
 
-function formatDate(dateStr: string): string {
-    return new Date(dateStr).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+/** The entries are months, not releases, so a day would be made up. */
+function formatPeriod(period: string): string {
+    const [year, month] = period.split("-");
+    return new Date(Number(year), Number(month) - 1, 1).toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+    });
+}
+
+/** What the month amounted to, counting the commits not listed below --
+ *  chores, docs, tests and CI, which have nothing to say to a reader. */
+function summarise(entry: ChangelogEntry): string {
+    const listed =
+        (entry.new_features?.length ?? 0) +
+        (entry.improvements?.length ?? 0) +
+        (entry.bugfixes?.length ?? 0);
+    const total = listed + (entry.other_changes ?? 0);
+    return `${total} ${total === 1 ? "change" : "changes"}`;
 }
 
 export default function ChangelogForm() {
@@ -53,12 +69,12 @@ export default function ChangelogForm() {
                 ) : (
                     <div className="grid gap-12">
                         {entries.map((entry) => (
-                            <div key={entry.version} className="grid gap-4 md:grid-cols-[120px_1fr] md:gap-8">
+                            <div key={entry.period} className="grid gap-4 md:grid-cols-[120px_1fr] md:gap-8">
                                 <div className="text-muted-foreground mt-1 text-sm md:text-right">
-                                    {formatDate(entry.date)}
+                                    {formatPeriod(entry.period)}
                                 </div>
                                 <div className="grid gap-4">
-                                    <h2 className="text-2xl font-bold">Version {entry.version}</h2>
+                                    <h2 className="text-2xl font-bold">{summarise(entry)}</h2>
                                     {entry.tags && entry.tags.length > 0 && (
                                         <div className="flex flex-wrap gap-2">
                                             {entry.tags.map((tag) => (
@@ -68,11 +84,11 @@ export default function ChangelogForm() {
                                             ))}
                                         </div>
                                     )}
-                                    {entry.newFeatures && entry.newFeatures.length > 0 && (
+                                    {entry.new_features && entry.new_features.length > 0 && (
                                         <div>
                                             <p className="text-sm font-semibold text-emerald-600 mb-1">New Features</p>
                                             <ul className="space-y-1">
-                                                {entry.newFeatures.map((f, i) => (
+                                                {entry.new_features.map((f, i) => (
                                                     <li key={i} className="flex items-start gap-2 text-sm">
                                                         <span className="text-emerald-500 mt-0.5">✦</span>
                                                         {f}

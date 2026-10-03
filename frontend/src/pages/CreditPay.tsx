@@ -54,8 +54,11 @@ export default function CreditPay() {
         return (
             <div className="flex flex-col items-center justify-center min-h-[60vh] px-4 text-center">
                 <CheckCircle2 className="h-16 w-16 text-emerald-500 mb-4" />
-                <h2 className="text-2xl font-bold mb-2">Payment successful!</h2>
-                <p className="text-muted-foreground mb-6">Your subscription has been activated.</p>
+                <h2 className="text-2xl font-bold mb-2">Demo complete</h2>
+                <p className="text-muted-foreground mb-6">
+                    The form validated. No payment was taken and no subscription
+                    exists &mdash; this page is a demonstration.
+                </p>
                 <Button asChild className="rounded-full">
                     <Link to="/">Back to home</Link>
                 </Button>
@@ -65,9 +68,24 @@ export default function CreditPay() {
 
     return (
         <div className="max-w-md mx-auto px-4 py-10">
-            <div className="flex items-center gap-2 mb-6">
+            <div className="flex items-center gap-2 mb-4">
                 <CreditCard className="h-6 w-6" />
                 <h1 className="text-2xl font-bold">Payment</h1>
+            </div>
+
+            {/* This form processes nothing. It exists to demonstrate the
+                validation and formatting, so it says so before anyone types
+                a real card into it. */}
+            <div
+                role="note"
+                className="mb-6 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm"
+            >
+                <p className="font-semibold">Demo form</p>
+                <p className="text-muted-foreground mt-0.5">
+                    No payment is taken and nothing is sent anywhere &mdash; there is
+                    no payment provider behind this page. Use the test number
+                    4242&nbsp;4242&nbsp;4242&nbsp;4242 rather than a real card.
+                </p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -75,7 +93,8 @@ export default function CreditPay() {
                     <Label htmlFor="cardNumber">Card number</Label>
                     <Input
                         id="cardNumber"
-                        placeholder="1234 5678 9012 3456"
+                        placeholder="4242 4242 4242 4242"
+                        autoComplete="off"
                         value={cardNumber}
                         onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
                         inputMode="numeric"
@@ -89,6 +108,7 @@ export default function CreditPay() {
                     <Input
                         id="cardHolder"
                         placeholder="John Doe"
+                        autoComplete="off"
                         value={cardHolder}
                         onChange={(e) => setCardHolder(e.target.value)}
                         className="mt-1"
@@ -102,6 +122,7 @@ export default function CreditPay() {
                         <Input
                             id="expiry"
                             placeholder="MM/YY"
+                            autoComplete="off"
                             value={expiry}
                             onChange={(e) => setExpiry(formatExpiry(e.target.value))}
                             inputMode="numeric"
@@ -114,6 +135,7 @@ export default function CreditPay() {
                         <Input
                             id="cvv"
                             placeholder="123"
+                            autoComplete="off"
                             value={cvv}
                             onChange={(e) => setCvv(e.target.value.replace(/\D/g, "").slice(0, 4))}
                             inputMode="numeric"
@@ -125,7 +147,7 @@ export default function CreditPay() {
 
                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-2">
                     <Lock className="h-3 w-3" />
-                    Your payment information is encrypted and secure.
+                    Nothing entered here leaves the page.
                 </div>
 
                 <Button type="submit" className="w-full" disabled={loading}>

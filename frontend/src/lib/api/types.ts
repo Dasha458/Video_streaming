@@ -132,14 +132,17 @@ export interface Notification {
   createdAt: string;
   relatedEntityId?: string;
 }
+/** Backend src/api/changelog.py. Built from the repository's commit history
+ *  by utils/build_changelog.py -- there are no tags in this project, so
+ *  entries are months rather than versions. */
 export interface ChangelogEntry {
+  period: string;
   date: string;
-  version: string;
+  new_features?: string[];
   improvements?: string[];
   bugfixes?: string[];
-  newFeatures?: string[];
-  imageUrl?: string;
   tags?: string[];
+  other_changes?: number;
 }
 export interface Category {
   id: string;
