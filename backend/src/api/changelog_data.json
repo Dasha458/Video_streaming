@@ -1,0 +1,196 @@
+[
+  {
+    "period": "2026-10",
+    "date": "2026-10-01",
+    "new_features": [],
+    "improvements": [
+      "channels: One name per value"
+    ],
+    "bugfixes": [],
+    "other_changes": 0,
+    "tags": [
+      "Improvements"
+    ]
+  },
+  {
+    "period": "2026-09",
+    "date": "2026-09-01",
+    "new_features": [
+      "utils: Find and remove storage objects no video points at any more",
+      "analytics: A view is one viewer, signed in or not",
+      "streaming: Access to a video's media is decided per video",
+      "contracts: Pin the convertor -> backend status message to one schema",
+      "backend: Add offset paging to video search"
+    ],
+    "improvements": [
+      "analytics: Split the god-service behind the facade it already was",
+      "analytics: One query builder for the six per-day charts",
+      "backend: Name the notifications, stop asking twice",
+      "frontend: One answer per question, and declare what we run on",
+      "frontend: One error-message helper, not two",
+      "config: Break the config <-> infrastructure import cycle",
+      "analytics: Split the period maths out of the query service",
+      "backend: Narrow `except Exception` to the failures each site can handle",
+      "auth: Move the session JWT from localStorage to an httpOnly cookie",
+      "frontend: Break up the Studio god component",
+      "frontend: Break up the Watch god component",
+      "frontend: Move History/Liked/WatchLater onto the shared query hook",
+      "frontend: Replace five hand-rolled pagination hooks with React Query",
+      "frontend: Replace 4 hand-rolled dropdowns with Radix primitives",
+      "frontend: Extract a shared Avatar component",
+      "backend: Consolidate hand-rolled pagination onto paginate_query",
+      "backend: Decompose AnalyticsService and extract _windowed helper",
+      "backend: Centralize the uuid5 status/privacy lookup pattern",
+      "backend: Extract AuthService and GitHubOAuthService from api/auth.py",
+      "backend: Rename services/auth.py to dependencies.py"
+    ],
+    "bugfixes": [
+      "auth: There was no password policy at all",
+      "player: A missing source is not a broken video, and one blip is not fatal",
+      "security: Rate limits are per caller, and an OAuth state is bound to  its browser",
+      "storage: Failures are reported, and deleting a video deletes it",
+      "compose: The stack could not come up from cold in one command",
+      "convertor: A failed upload is no longer reported as a finished video",
+      "analytics: Engagement rate is a share of viewers, not a count of actions",
+      "analytics: The client address is settled at the edge, not guessed here",
+      "frontend: Repair the build, and add the check that would have caught it",
+      "frontend: Comments stopped at 100, and lint is clean for the first time",
+      "analytics: Record the traffic source the client already worked out",
+      "backend: Private videos were reachable, analytics numbers were wrong",
+      "toast: The surviving toast system rendered nothing at all",
+      "download: Keep the blob URL alive and sanitise the filename",
+      "comments: Report failed delete and reaction mutations",
+      "reactions: Trust the server's counts and block concurrent clicks",
+      "analytics: Watch sessions were never recorded",
+      "auth: Hide password reset while no email provider is wired up",
+      "search: `_source` is not a parameter of the Elasticsearch client",
+      "gateway: Dev admin routes no longer require every service to be up",
+      "upload: Metadata in the request body; thumbnail and description optional",
+      "backend: Seed lookup tables from a migration, not the demo seeder",
+      "convertor: One rendition ladder; published metadata matches the encode",
+      "gateway: Admin surfaces exist only in the dev profile",
+      "gateway: Rate-limit the API and harden response headers",
+      "infra: Make a fresh `docker compose up` actually work",
+      "ci: Remove redundant stages declaration in ci/deploy.yml",
+      "backend: Watch_history.last_watched_at stores timezone-aware timestamps",
+      "backend: Keep Video/Comment like/dislike counters in sync with reactions",
+      "frontend: Reconcile types.ts with the real backend response shapes",
+      "backend: Derive CORS/bucket origins from FRONTEND_URL instead of hardcoding",
+      "backend: Unify the three error response shapes into one envelope",
+      "backend: Use relative imports in model TYPE_CHECKING blocks",
+      "backend: Update test fixtures for the current VideoPreview/analytics schemas",
+      "backend: Make CheckUserResponse snake_case like the rest of the API",
+      "docker: Remove dead external network declaration",
+      "ci: Match detect-changes keys with the deploy job's SERVICE names",
+      "backend: Validate encoder status before computing its lookup UUID",
+      "backend: Remove duplicate es_client.close() call on shutdown",
+      "frontend: Wire up the non-functional unsubscribe button on Subscriptions",
+      "frontend: Consolidate 3 parallel toast systems into the one that is mounted",
+      "frontend: Mount ErrorBoundary so render errors no longer show a blank screen"
+    ],
+    "other_changes": 26,
+    "tags": [
+      "New Features",
+      "Improvements",
+      "Bug Fixes"
+    ]
+  },
+  {
+    "period": "2026-05",
+    "date": "2026-05-01",
+    "new_features": [
+      "Add notifications, channels, history, playlists, CI/CD fixes"
+    ],
+    "improvements": [],
+    "bugfixes": [],
+    "other_changes": 1,
+    "tags": [
+      "New Features"
+    ]
+  },
+  {
+    "period": "2026-03",
+    "date": "2026-03-01",
+    "new_features": [],
+    "improvements": [],
+    "bugfixes": [],
+    "other_changes": 18,
+    "tags": []
+  },
+  {
+    "period": "2026-02",
+    "date": "2026-02-01",
+    "new_features": [],
+    "improvements": [],
+    "bugfixes": [],
+    "other_changes": 29,
+    "tags": []
+  },
+  {
+    "period": "2025-12",
+    "date": "2025-12-01",
+    "new_features": [],
+    "improvements": [],
+    "bugfixes": [],
+    "other_changes": 16,
+    "tags": []
+  },
+  {
+    "period": "2025-11",
+    "date": "2025-11-01",
+    "new_features": [
+      "Implement video search with filters and live hints"
+    ],
+    "improvements": [],
+    "bugfixes": [],
+    "other_changes": 35,
+    "tags": [
+      "New Features"
+    ]
+  },
+  {
+    "period": "2025-10",
+    "date": "2025-10-01",
+    "new_features": [
+      "Add request handling from frontend for video upload to the server",
+      "Added category section to home page and navigation to upload page",
+      "Add custom loading page and refactor layout & routing logic"
+    ],
+    "improvements": [
+      "Remove useEffect and load initial videos directly on render"
+    ],
+    "bugfixes": [],
+    "other_changes": 48,
+    "tags": [
+      "New Features",
+      "Improvements"
+    ]
+  },
+  {
+    "period": "2025-09",
+    "date": "2025-09-01",
+    "new_features": [],
+    "improvements": [],
+    "bugfixes": [],
+    "other_changes": 27,
+    "tags": []
+  },
+  {
+    "period": "2025-08",
+    "date": "2025-08-01",
+    "new_features": [],
+    "improvements": [],
+    "bugfixes": [],
+    "other_changes": 143,
+    "tags": []
+  },
+  {
+    "period": "2025-07",
+    "date": "2025-07-01",
+    "new_features": [],
+    "improvements": [],
+    "bugfixes": [],
+    "other_changes": 1,
+    "tags": []
+  }
+]

@@ -1,89 +1,53 @@
+import json
+from functools import lru_cache
+from pathlib import Path
 from typing import List, Optional
 
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+DATA_FILE = Path(__file__).with_name("changelog_data.json")
 
 
 class ChangelogEntry(BaseModel):
-    date: str
-    version: str
-    improvements: Optional[List[str]] = None
-    bugfixes: Optional[List[str]] = None
-    newFeatures: Optional[List[str]] = None
-    tags: Optional[List[str]] = None
+    """One month of work, as the repository records it.
+
+    This used to be a hardcoded list claiming releases from 2024-12-01 to
+    2025-04-20 -- eight months before the first commit -- with specifics
+    no commit backs up. Every line now comes from a real commit subject;
+    see utils/build_changelog.py, which regenerates the data file.
+
+    There are no tags in this repository, so there is nothing to call a
+    version. Entries are identified by the month instead.
+    """
+
+    period: str = Field(..., description="The month the work landed in, YYYY-MM.")
+    date: str = Field(..., description="First day of that month, for display.")
+    new_features: List[str] = []
+    improvements: List[str] = []
+    bugfixes: List[str] = []
+    tags: List[str] = []
+    other_changes: int = Field(
+        0,
+        description=(
+            "Commits in that month with nothing to say to a reader of the "
+            "changelog -- chores, docs, tests, CI."
+        ),
+    )
+    version: Optional[str] = Field(
+        None, description="Unused: this project is not tagged."
+    )
 
 
-CHANGELOG: List[ChangelogEntry] = [
-    ChangelogEntry(
-        date="2025-04-20",
-        version="1.4.0",
-        tags=["New Features", "Improvements"],
-        newFeatures=[
-            "Video analytics dashboard with views, watch time, retention charts",
-            "Per-video analytics page with traffic sources breakdown",
-            "Creator Studio with realtime viewer counter",
-        ],
-        improvements=[
-            "Watch session heartbeat now tracks audience retention percentage",
-            "Home page loads 20% faster with optimised HLS prefetch",
-        ],
-    ),
-    ChangelogEntry(
-        date="2025-03-15",
-        version="1.3.0",
-        tags=["New Features", "Bug Fixes"],
-        newFeatures=[
-            "Comment replies with nested display",
-            "Save to playlist and Watch Later buttons on video player",
-            "Playlist detail page with video management",
-        ],
-        bugfixes=[
-            "Fixed video deletion returning 404 (wrong URL in API client)",
-            "Fixed playlist cards linking to non-existent page",
-        ],
-    ),
-    ChangelogEntry(
-        date="2025-02-10",
-        version="1.2.0",
-        tags=["New Features"],
-        newFeatures=[
-            "GitHub OAuth login",
-            "Channel creation flow for new users",
-            "Channel subscribe / unsubscribe",
-            "Notification system with unread badge",
-        ],
-        improvements=[
-            "Profile page now supports editing username and bio",
-            "Password change from profile settings",
-        ],
-    ),
-    ChangelogEntry(
-        date="2025-01-05",
-        version="1.1.0",
-        tags=["Improvements", "Bug Fixes"],
-        improvements=[
-            "HLS adaptive bitrate streaming (360p / 720p / 1080p)",
-            "Thumbnail upload during video publish flow",
-            "Category filter on home page",
-        ],
-        bugfixes=[
-            "Fixed video stuck in Processing status after successful transcoding",
-            "Fixed avatar not loading on channel page for new users",
-        ],
-    ),
-    ChangelogEntry(
-        date="2024-12-01",
-        version="1.0.0",
-        tags=["New Features"],
-        newFeatures=[
-            "Initial release — video upload, playback, and search",
-            "User authentication with email + password",
-            "Like / dislike reactions on videos and comments",
-            "Watch history and liked videos pages",
-        ],
-    ),
-]
+@lru_cache(maxsize=1)
+def _entries() -> List[ChangelogEntry]:
+    """Read once. The file is generated at development time and committed."""
+    if not DATA_FILE.exists():
+        return []
+    raw = json.loads(DATA_FILE.read_text(encoding="utf-8"))
+    return [ChangelogEntry(**item) for item in raw]
+
 
 router_changelog = APIRouter(
     prefix="/api/changelog",
@@ -96,7 +60,10 @@ router_changelog = APIRouter(
     "",
     response_model=List[ChangelogEntry],
     summary="Get changelog",
-    description="Returns the list of product changelog entries, newest first.",
+    description=(
+        "Months of work, newest first, built from the repository's commit "
+        "history rather than written by hand."
+    ),
 )
 async def get_changelog() -> List[ChangelogEntry]:
-    return CHANGELOG
+    return _entries()
