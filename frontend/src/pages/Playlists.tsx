@@ -13,6 +13,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { getPlaylists, createPlaylist, deletePlaylist, type PlaylistItem } from "@api/playlistApi";
 import { timeAgo } from "@/utils/timeAgo";
+import { getApiErrorMessage } from "@/utils/apiError";
+import { toast } from "@/components/ui/toast/use-toast";
 
 export default function Playlists() {
     const [playlists, setPlaylists] = useState<PlaylistItem[]>([]);
@@ -21,6 +23,7 @@ export default function Playlists() {
     const [newName, setNewName] = useState("");
     const [newDesc, setNewDesc] = useState("");
     const [creating, setCreating] = useState(false);
+    const [loadError, setLoadError] = useState<string | null>(null);
 
     useEffect(() => {
         loadPlaylists();
@@ -28,11 +31,13 @@ export default function Playlists() {
 
     const loadPlaylists = async () => {
         setLoading(true);
+        setLoadError(null);
         try {
             const data = await getPlaylists();
             setPlaylists(data.items);
         } catch (err) {
-            console.error("Failed to load playlists:", err);
+            // An empty list and a failed request looked identical.
+            setLoadError(getApiErrorMessage(err, "Could not load your playlists"));
         } finally {
             setLoading(false);
         }
@@ -48,7 +53,12 @@ export default function Playlists() {
             setNewName("");
             setNewDesc("");
         } catch (err) {
-            console.error("Failed to create playlist:", err);
+            // The dialog stays open on failure, so say why rather than
+            // leaving the button looking like it did nothing.
+            toast({
+                title: getApiErrorMessage(err, "Could not create the playlist"),
+                variant: "destructive",
+            });
         } finally {
             setCreating(false);
         }
@@ -61,7 +71,10 @@ export default function Playlists() {
             await deletePlaylist(playlistId);
             setPlaylists(prev => prev.filter(p => p.id !== playlistId));
         } catch (err) {
-            console.error("Failed to delete playlist:", err);
+            toast({
+                title: getApiErrorMessage(err, "Could not delete the playlist"),
+                variant: "destructive",
+            });
         }
     };
 
@@ -88,6 +101,23 @@ export default function Playlists() {
                             <div className="h-3 bg-muted rounded w-1/2" />
                         </div>
                     ))}
+                </div>
+            ) : loadError ? (
+                /* Not the same thing as having no playlists, which is what
+                   this looked like when the request failed. */
+                <div className="flex flex-col items-center justify-center py-24 text-center">
+                    <ListVideo className="h-16 w-16 text-muted-foreground mb-4" />
+                    <h2 className="text-lg font-semibold mb-1">{loadError}</h2>
+                    <p className="text-sm text-muted-foreground mb-6">
+                        Your playlists could not be loaded.
+                    </p>
+                    <Button
+                        variant="outline"
+                        className="rounded-full"
+                        onClick={() => void loadPlaylists()}
+                    >
+                        Try again
+                    </Button>
                 </div>
             ) : playlists.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-24 text-center">

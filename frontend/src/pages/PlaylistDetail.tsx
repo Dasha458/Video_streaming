@@ -7,6 +7,8 @@ import VideoCard from "@/components/VideoCard";
 import { getPlaylist, deleteFromPlaylist, type PlaylistDetail } from "@api/playlistApi";
 import type { VideoPreview } from "@api/types";
 import { timeAgo } from "@/utils/timeAgo";
+import { getApiErrorMessage } from "@/utils/apiError";
+import { toast } from "@/components/ui/toast/use-toast";
 
 export default function PlaylistDetailPage() {
     const { id } = useParams<{ id: string }>();
@@ -21,7 +23,7 @@ export default function PlaylistDetailPage() {
         setLoading(true);
         getPlaylist(id)
             .then(setPlaylist)
-            .catch(() => setError("Failed to load playlist"))
+            .catch((err) => setError(getApiErrorMessage(err, "Failed to load playlist")))
             .finally(() => setLoading(false));
     }, [id]);
 
@@ -35,8 +37,13 @@ export default function PlaylistDetailPage() {
                     ? { ...prev, items: prev.items.filter((v) => v.id !== videoId), total: prev.total - 1 }
                     : prev
             );
-        } catch {
-            // silent
+        } catch (err) {
+            // Was a bare `catch { // silent }`: the video stayed in the list
+            // and nothing said why.
+            toast({
+                title: getApiErrorMessage(err, "Could not remove the video"),
+                variant: "destructive",
+            });
         } finally {
             setRemoving(null);
         }

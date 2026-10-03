@@ -35,8 +35,11 @@ export function LoginForm({
             setGithubLoading(true);
             const url = await getGithubAuthUrl();
             window.location.href = url;
-        } catch {
-            toast({ title: "Failed to connect to GitHub", variant: "destructive" });
+        } catch (err) {
+            toast({
+                title: getApiErrorMessage(err, "Failed to connect to GitHub"),
+                variant: "destructive",
+            });
             setGithubLoading(false);
         }
     };
