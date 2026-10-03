@@ -1,4 +1,5 @@
 import logging
+import time
 from pathlib import Path
 
 from faststream.asgi import AsgiFastStream
@@ -8,12 +9,14 @@ from prometheus_client import CollectorRegistry, make_asgi_app
 from src.config import get_rabbitmq_settings
 from src.exceptions import AppError, FFmpegExecutionError, InvalidMediaError
 from src.messages import EncodeStatusMessage
+from src.metrics import EncodeMetrics
 from src.renditions import LADDER
 from src.s3_client import get_s3_client
 from src.services import (
     check_liveness,
     cleanup_dirs,
     get_video_properties,
+    has_gpu,
     prepare_dirs,
     stream_ffmpeg,
 )
@@ -21,6 +24,9 @@ from src.services import (
 settings = get_rabbitmq_settings()
 broker = RabbitBroker(settings.rabbitmq_url)
 registry = CollectorRegistry()
+# Without this the registry was empty: the endpoint answered, Prometheus
+# called the target up, and not one measurement of the actual work existed.
+metrics = EncodeMetrics(registry)
 app = AsgiFastStream(
     broker,
     asgi_routes=[
@@ -42,6 +48,11 @@ async def publish_status(message: EncodeStatusMessage) -> None:
 async def encode_video(filename: str) -> None:
     s3_client = get_s3_client()
     video_id = Path(filename).stem
+
+    metrics.started.inc()
+    metrics.in_progress.inc()
+    started_at = time.perf_counter()
+    outcome = "failed"
 
     try:
         base_dir = await prepare_dirs(video_id)
@@ -74,6 +85,7 @@ async def encode_video(filename: str) -> None:
                 3,
                 properties.has_audio,
             )
+            metrics.encoder.labels(encoder="gpu" if await has_gpu() else "cpu").inc()
         except FFmpegExecutionError:
             logging.warning(
                 "GPU encoding failed, retrying with CPU...",
@@ -89,6 +101,10 @@ async def encode_video(filename: str) -> None:
                 properties.has_audio,
                 force_cpu=True,
             )
+            # The GPU path failed and the CPU one carried it: worth counting
+            # separately, because a steady drift onto CPU is a capacity
+            # problem long before it is an outage.
+            metrics.encoder.labels(encoder="cpu").inc()
 
         await s3_client.upload_dir(video_id, base_dir, bucket_name="videos")
 
@@ -110,6 +126,7 @@ async def encode_video(filename: str) -> None:
             )
         )
 
+        outcome = "ready"
         logging.info("Video encoding completed", extra={"video_id": video_id})
 
         await s3_client.delete_file(filename, bucket_name="videos")
@@ -134,6 +151,10 @@ async def encode_video(filename: str) -> None:
             )
 
     finally:
+        metrics.in_progress.dec()
+        metrics.finished.labels(outcome=outcome).inc()
+        metrics.duration.observe(time.perf_counter() - started_at)
+
         # Never let cleanup replace the outcome above.
         try:
             cleanup_dirs(video_id)
