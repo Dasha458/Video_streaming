@@ -50,7 +50,7 @@ export default function Channel() {
             .getChannelInfo(channel_name)
             .then((info) => {
                 setChannel(info);
-                setSubscribed(!!info.isSubscribed);
+                setSubscribed(!!info.is_subscribed);
             })
             .catch(console.error)
             .finally(() => setChannelLoading(false));
@@ -66,13 +66,23 @@ export default function Channel() {
                 await channelApi.unsubscribeFromChannel(channel_name);
                 setSubscribed(false);
                 setChannel((prev) =>
-                    prev ? { ...prev, subscribersCount: Math.max(0, (prev.subscribersCount ?? 0) - 1) } : prev
+                    prev
+                        ? {
+                              ...prev,
+                              subscribers_count: Math.max(
+                                  0,
+                                  prev.subscribers_count - 1,
+                              ),
+                          }
+                        : prev,
                 );
             } else {
                 await channelApi.subscribeToChannel(channel_name);
                 setSubscribed(true);
                 setChannel((prev) =>
-                    prev ? { ...prev, subscribersCount: (prev.subscribersCount ?? 0) + 1 } : prev
+                    prev
+                        ? { ...prev, subscribers_count: prev.subscribers_count + 1 }
+                        : prev,
                 );
             }
         } catch (e) {
@@ -111,13 +121,13 @@ export default function Channel() {
         );
     }
 
-    const isOwner = channel.isOwner;
-    const avatarSrc = channel.channel_avatar || channel.avatar_path || null;
-    const bannerSrc = channel.channelBanner || channel.background_path || null;
-    const bio = channel.bio || channel.description || null;
-    const subCount = channel.subscribersCount ?? channel.subscribers_count ?? 0;
-    const videoCount = channel.videosCount ?? 0;
-    const joinedAt = channel.createdAt || channel.created_at || null;
+    const isOwner = channel.is_owner;
+    const avatarSrc = channel.avatar_path || channel.avatar_path || null;
+    const bannerSrc = channel.background_path || channel.background_path || null;
+    const bio = channel.description || channel.description || null;
+    const subCount = channel.subscribers_count;
+    const videoCount = channel.videos_count ?? 0;
+    const joinedAt = channel.created_at || channel.created_at || null;
 
     const TABS: { id: Tab; label: string }[] = [
         { id: "videos", label: videoCount > 0 ? `Videos (${videoCount})` : "Videos" },
