@@ -131,10 +131,15 @@ def mock_s3_client() -> AsyncMock:
 
 @pytest.fixture(scope="session")
 def mock_rabbit_broker() -> MagicMock:
-    broker = MagicMock()
-    broker.is_connected = True
+    # Shaped like FastStream's RabbitBroker, which has ping() and no
+    # is_connected. The fixture used to supply is_connected=True -- an
+    # attribute the real client does not have -- so the health check
+    # read it in tests and fell back to a default in production, where
+    # the default was "healthy".
+    broker = MagicMock(spec=["publish", "connect", "ping"])
     broker.publish = AsyncMock(return_value=None)
     broker.connect = AsyncMock(return_value=None)
+    broker.ping = AsyncMock(return_value=True)
     return broker
 
 

@@ -50,6 +50,10 @@ class HealthService:
             self.checks["object_storage"] = err.code
             self._statuses.append(err.status_code)
 
+    #: A readiness probe runs every few seconds; waiting longer than this
+    #: for an answer turns a slow broker into a slow probe.
+    BROKER_PING_TIMEOUT = 2.0
+
     async def _check_message_broker(self) -> None:
         if self.broker is None:
             self.checks["message_broker"] = "skipped"
@@ -63,18 +67,21 @@ class HealthService:
             # several times a minute, for as long as the outage lasted.
             # Reconnecting is the broker client's own job; saying so is
             # this function's.
-            is_connected = getattr(self.broker, "is_connected", None)
-
-            if is_connected is None:
-                # A broker that does not report its state cannot be
-                # checked. "unknown" is the honest answer; the default
-                # here used to be True, which made this a check that
-                # could not fail.
+            ping = getattr(self.broker, "ping", None)
+            if ping is None:
+                # Nothing to ask. "unknown" is the honest answer; the
+                # old default here was True, which made this a check
+                # that could not fail.
                 self.checks["message_broker"] = "unknown"
                 return
 
-            if not is_connected:
-                raise RuntimeError("Message broker not connected")
+            # The client's own liveness call, which neither opens nor
+            # closes anything. It also replaces the `is_connected`
+            # attribute this used to read -- FastStream's RabbitBroker
+            # does not have one, so the check was answering from a
+            # default and passing while the broker was down.
+            if not await ping(timeout=self.BROKER_PING_TIMEOUT):
+                raise RuntimeError("Message broker did not answer")
 
             self.checks["message_broker"] = "ok"
         except Exception as ex:

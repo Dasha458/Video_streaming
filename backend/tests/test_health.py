@@ -112,18 +112,18 @@ class TestTheBrokerCheckObserves:
         return service
 
     @pytest.mark.asyncio
-    async def test_a_connected_broker_passes(self):
+    async def test_a_broker_that_answers_passes(self):
         broker = MagicMock()
-        broker.is_connected = True
+        broker.ping = AsyncMock(return_value=True)
 
         service = await self._check(broker)
 
         assert service.checks["message_broker"] == "ok"
 
     @pytest.mark.asyncio
-    async def test_a_disconnected_broker_is_reported_not_reconnected(self):
+    async def test_a_silent_broker_is_reported_not_reconnected(self):
         broker = MagicMock()
-        broker.is_connected = False
+        broker.ping = AsyncMock(return_value=False)
         broker.connect = MagicMock()
 
         service = await self._check(broker)
@@ -132,8 +132,19 @@ class TestTheBrokerCheckObserves:
         broker.connect.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_a_broker_that_says_nothing_is_not_called_healthy(self):
-        broker = MagicMock(spec=[])  # no is_connected attribute at all
+    async def test_the_probe_does_not_wait_on_a_slow_broker(self):
+        """A readiness probe runs every few seconds; an unbounded wait
+        here turns a slow broker into a slow probe."""
+        broker = MagicMock()
+        broker.ping = AsyncMock(return_value=True)
+
+        await self._check(broker)
+
+        assert broker.ping.await_args.kwargs["timeout"] <= 5
+
+    @pytest.mark.asyncio
+    async def test_a_broker_with_nothing_to_ask_is_not_called_healthy(self):
+        broker = MagicMock(spec=[])  # no ping, no is_connected
 
         service = await self._check(broker)
 
