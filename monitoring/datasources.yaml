@@ -9,6 +9,8 @@ deleteDatasources:
     orgId: 1
   - name: Loki
     orgId: 1
+  - name: VideoDB
+    orgId: 1
 
 datasources:
   - name: Prometheus
@@ -27,4 +29,25 @@ datasources:
     uid: loki
     access: proxy
     url: http://loki:3100
+    editable: true
+
+  # The platform's own database, read directly. Metrics answer "is it
+  # healthy"; this answers "how many videos were uploaded this week" --
+  # and nobody has to write a metric for every question anyone will ask.
+  #
+  # grafana_ro is a login with SELECT and nothing else (created by
+  # Docker/postgres/postgres_entrypoint.sh). The password comes from the
+  # environment, so it is not committed here.
+  - name: VideoDB
+    type: grafana-postgresql-datasource
+    uid: videodb
+    url: postgres:5432
+    user: grafana_ro
+    jsonData:
+      database: ${VIDEO_DB}
+      sslmode: disable
+      postgresVersion: 1600
+      timescaledb: false
+    secureJsonData:
+      password: ${GRAFANA_DB_PASSWORD}
     editable: true
