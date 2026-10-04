@@ -1,0 +1,24 @@
+# Loads the dashboards committed in this folder.
+#
+# Only datasources.yaml was provisioned before, so dashboard.json -- an
+# eleven-panel dashboard somebody built and exported -- sat in the
+# repository with nothing reading it. The dashboard lived in one person's
+# grafana_data volume; everywhere else Grafana started empty, which is
+# what "no access to Grafana" actually meant.
+#
+# Provisioned dashboards are read-only in the UI on purpose: the file in
+# git is the dashboard. To change one, edit it here, or edit in the UI,
+# export with "Export for sharing externally" OFF, and replace the file.
+apiVersion: 1
+
+providers:
+  - name: "repository"
+    orgId: 1
+    folder: ""
+    type: file
+    disableDeletion: false
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

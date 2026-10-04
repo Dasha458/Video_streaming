@@ -142,6 +142,27 @@ class TestMetrics:
         assert "convertor_encodes_finished" in names
         assert "convertor_encode_duration_seconds" in names
 
+    def test_the_quiet_case_reads_as_zero(self):
+        """A labelled counter nobody has incremented yet does not exist, and
+        a panel asking for failures cannot tell that apart from a dead
+        scrape."""
+        _, registry = self._fresh()
+
+        for outcome in ("ready", "failed"):
+            assert (
+                registry.get_sample_value(
+                    "convertor_encodes_finished_total", {"outcome": outcome}
+                )
+                == 0
+            )
+        for encoder in ("gpu", "cpu"):
+            assert (
+                registry.get_sample_value(
+                    "convertor_encoder_used_total", {"encoder": encoder}
+                )
+                == 0
+            )
+
     def test_outcomes_are_counted_separately(self):
         metrics, registry = self._fresh()
         metrics.finished.labels(outcome="ready").inc()

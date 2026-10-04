@@ -56,3 +56,12 @@ class EncodeMetrics:
             ["encoder"],
             registry=registry,
         )
+
+        # A labelled counter does not exist until something increments it,
+        # so before the first encode a dashboard asking for failures gets
+        # "no data" -- indistinguishable from a scrape that is down. Naming
+        # the labels up front makes the quiet case read as zero.
+        for outcome in ("ready", "failed"):
+            self.finished.labels(outcome=outcome)
+        for encoder in ("gpu", "cpu"):
+            self.encoder.labels(encoder=encoder)
