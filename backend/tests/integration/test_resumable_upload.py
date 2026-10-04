@@ -42,6 +42,7 @@ def _s3(stored: bytes = b"", parts=None):
     s3.complete_multipart = AsyncMock()
     s3.abort_multipart = AsyncMock()
     s3.delete_file = AsyncMock()
+    s3.delete_all_versions = AsyncMock(return_value=1)
 
     async def _iter(key, bucket, chunk_size=1024 * 1024):
         yield stored
@@ -236,7 +237,10 @@ class TestCompleting:
                 thumbnail=None,
             )
 
-        s3.delete_file.assert_awaited_once()
+        # Every version: the bucket is versioned, so an ordinary delete
+        # would leave the file behind as a noncurrent version and a
+        # refused upload is an ordinary thing.
+        s3.delete_all_versions.assert_awaited_once()
         assert await _session_row(session, started.upload_id) is None
 
     @pytest.mark.asyncio

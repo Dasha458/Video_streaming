@@ -297,8 +297,16 @@ class UploadService:
         return hasher.hexdigest(), size
 
     async def _discard_object(self, object_key: str) -> None:
+        """Release the stored object, bytes and all.
+
+        Every version, not just the current one: the bucket is versioned,
+        so a plain delete leaves the file behind as a noncurrent version.
+        A refused upload is an ordinary thing -- a duplicate file, a size
+        that does not match -- so leaving a copy each time is a steady
+        leak nothing would explain.
+        """
         try:
-            await self.s3_client.delete_file(object_key, bucket_name="videos")
+            await self.s3_client.delete_all_versions(object_key, "videos")
         except Exception:  # noqa: BLE001 - best effort, the caller is already failing
             logging.warning("Could not remove %s after a failed upload", object_key)
 
