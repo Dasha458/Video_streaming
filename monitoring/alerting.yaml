@@ -9,9 +9,14 @@
 # failing, uploads not playable, storage running out -- rather than about
 # causes like high CPU, which is often just a machine doing its job.
 #
-# Firing alerts appear under Alerting > Alert rules. Delivery needs a
-# contact point (email, Slack, Telegram); without one they are visible in
-# Grafana but notify nobody.
+# Firing alerts appear under Alerting > Alert rules.
+#
+# Delivery to Telegram is implemented and tested end to end, and is
+# currently switched off: grafana-bootstrap generates the contact point
+# and the notification policy from TELEGRAM_BOT_TOKEN and
+# TELEGRAM_CHAT_ID in Vault's secret/grafana, and removes them again when
+# those are empty -- which they are. Until they are set, these rules are
+# visible in Grafana and notify nobody. See monitoring/README.md.
 {
   "apiVersion": 1,
   "groups": [
