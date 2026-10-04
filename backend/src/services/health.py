@@ -1,5 +1,4 @@
 import asyncio
-import inspect
 from typing import TYPE_CHECKING, Dict, Optional
 
 from fastapi import status
@@ -57,14 +56,24 @@ class HealthService:
             return
 
         try:
-            is_connected = getattr(self.broker, "is_connected", False)
+            # Reported, not repaired. This used to call connect() when it
+            # found the broker disconnected, so a readiness probe changed
+            # the state of the application -- and against a broker that
+            # was actually down it hammered connect() on every probe,
+            # several times a minute, for as long as the outage lasted.
+            # Reconnecting is the broker client's own job; saying so is
+            # this function's.
+            is_connected = getattr(self.broker, "is_connected", None)
+
+            if is_connected is None:
+                # A broker that does not report its state cannot be
+                # checked. "unknown" is the honest answer; the default
+                # here used to be True, which made this a check that
+                # could not fail.
+                self.checks["message_broker"] = "unknown"
+                return
 
             if not is_connected:
-                connect_result = self.broker.connect()
-                if inspect.isawaitable(connect_result):
-                    await connect_result
-
-            if not getattr(self.broker, "is_connected", True):
                 raise RuntimeError("Message broker not connected")
 
             self.checks["message_broker"] = "ok"
