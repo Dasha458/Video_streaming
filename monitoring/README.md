@@ -138,7 +138,18 @@ a week, and then it protects nothing.
 
 They are visible under **Alerting → Alert rules**.
 
-### Delivery to Telegram
+### Delivery to Telegram — built, tested, switched off
+
+**Status: implemented and working; not enabled, because no credentials
+are stored yet.** Alerts currently fire into Grafana and go nowhere.
+
+Nothing has to be built to turn it on — only two values have to exist
+in Vault. The path itself was verified end to end with a throwaway
+token: `grafana-bootstrap` generated the contact point and the
+notification policy, Grafana loaded both, the token came back from the
+API as `[REDACTED]` rather than in clear, every alert routed to
+`telegram`, and clearing the credentials removed the contact point
+again.
 
 Put the bot token and the chat id in Vault and the contact point
 appears; clear them and it disappears:

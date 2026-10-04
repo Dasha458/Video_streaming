@@ -99,6 +99,10 @@ docker exec vault sh -c '
   vault kv put secret/rabbitmq  RABBITMQ_HOST=rabbitmq RABBITMQ_PORT=5672 RABBITMQ_USER=guest RABBITMQ_PASSWORD=guest
   vault kv put secret/grafana   ADMIN_PASSWORD=<сильний пароль> DB_PASSWORD=<сильний пароль>
 '
+# Необовʼязково: доставка алертів у Telegram. Код готовий і перевірений —
+# бракує лише цих двох значень; без них алерти видно в Grafana, але нікому
+# не надсилаються. Як отримати токен і chat id — monitoring/README.md.
+#   docker exec vault vault kv patch secret/grafana #     TELEGRAM_BOT_TOKEN=<від @BotFather> TELEGRAM_CHAT_ID=<з getUpdates>
 
 # 4.4 Перезапустити bff, щоб він підхопив секрети.
 docker compose up -d --force-recreate bff
@@ -244,7 +248,7 @@ Video_streaming/
 │   └── Caddyfile            # PROD ONLY: TLS-термінація, Let's Encrypt автоматично
 ├── monitoring/              # Prometheus, Grafana, Loki, Promtail — усе provisioning'ом із репо
 │   ├── dashboards/          # 4 дашборди: API, Transcoding, Infrastructure, Platform
-│   ├── alerting.yaml        # 7 правил алертів
+│   ├── alerting.yaml        # 7 правил алертів (доставка в Telegram реалізована, вимкнена)
 │   └── README.md            # як це влаштовано і як додати панель/метрику
 ├── vault/
 │   └── config/              # vault.hcl (HTTP — Vault лишається у внутрішній мережі) + unseal.sh
