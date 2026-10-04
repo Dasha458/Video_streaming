@@ -18,7 +18,6 @@ from src.services.channels import ChannelService
 from src.services.comments import CommentService
 from src.services.file_signing import FileSigningService
 from src.services.files import FileService
-from src.services.uploads import UploadService
 from src.services.github_oauth_service import GitHubOAuthService
 from src.services.health import HealthService
 from src.services.history import HistoryService
@@ -27,6 +26,7 @@ from src.services.notifications import NotificationService
 from src.services.playlists import PlaylistService
 from src.services.search import SearchService
 from src.services.streaming import StreamService
+from src.services.uploads import UploadService
 from src.services.videos import VideoService
 from src.services.watch_later import WatchLaterService
 

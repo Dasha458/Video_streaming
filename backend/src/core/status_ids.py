@@ -63,3 +63,24 @@ PRIVACY_ID_BY_NAME: dict[str, UUID] = {
 def privacy_id_for(name: str) -> UUID | None:
     """Look up the privacy UUID for a known privacy name (case-insensitive)."""
     return PRIVACY_ID_BY_NAME.get(name.lower())
+
+
+# ── Category ────────────────────────────────────────────────────────────────
+
+
+def category_id_for(name: str) -> UUID:
+    """The id of a category, derived the same way the seed data was.
+
+    The last of the hand-written ``uuid5`` calls: this one was still
+    spelled out in services/files.py and services/videos.py, so the two
+    could have drifted apart in exactly the way this module exists to
+    prevent. The input is constrained by a Literal on the request
+    schema, which is why it never bit -- not a reason to leave it.
+
+    Unlike statuses and privacy there is no fixed list here: categories
+    are rows, and new ones can be added without touching this file. A
+    name no row matches produces an id no row matches, which the foreign
+    key then refuses -- the same answer, from the database rather than
+    from a guess here.
+    """
+    return uuid5(NAMESPACE_DNS, f"video_category:{name.lower()}")

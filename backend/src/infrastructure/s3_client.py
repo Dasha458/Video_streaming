@@ -160,9 +160,7 @@ class S3Client:
         """Start an upload and return the id the parts belong to."""
         self._check_bucket(bucket_name)
         async with self._get_client() as client:
-            response = await client.create_multipart_upload(
-                Bucket=bucket_name, Key=key
-            )
+            response = await client.create_multipart_upload(Bucket=bucket_name, Key=key)
             return str(response["UploadId"])
 
     async def upload_part(
@@ -224,9 +222,7 @@ class S3Client:
                 },
             )
 
-    async def abort_multipart(
-        self, key: str, bucket_name: str, upload_id: str
-    ) -> None:
+    async def abort_multipart(self, key: str, bucket_name: str, upload_id: str) -> None:
         """Discard an unfinished upload.
 
         Worth doing explicitly: an abandoned multipart upload holds the

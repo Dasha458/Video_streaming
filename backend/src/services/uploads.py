@@ -129,9 +129,7 @@ class UploadService:
         record = await self._owned_session(upload_id, user_id)
 
         if not 1 <= part_number <= MAX_PARTS:
-            raise PartTooSmallError(
-                f"part number must be between 1 and {MAX_PARTS}"
-            )
+            raise PartTooSmallError(f"part number must be between 1 and {MAX_PARTS}")
 
         # The last part may be short; any other short part would make the
         # assembled object unreadable, and S3 only says so at completion
