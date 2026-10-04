@@ -5,7 +5,7 @@ import { timeAgo } from "@/utils/timeAgo";
 import type {
   Video,
   VideoPreview,
-  UploadResponse,
+
   DownloadResponse,
 } from "./types";
 
@@ -144,40 +144,6 @@ export const getVideoPreviewsByCategory = async (
   return (res.data.items || []).map(mapToPreview);
 };
 
-export const uploadVideo = async (
-  file: File,
-  options?: {
-    title?: string;
-    description?: string;
-    thumbnail?: File;
-    isPublic?: boolean;
-    category?: string;
-  },
-): Promise<UploadResponse> => {
-  try {
-    // Everything goes in the multipart body: a title or description in the
-    // query string would be recorded in the gateway's access log.
-    const formData = new FormData();
-    formData.append("video", file);
-    if (options?.thumbnail) formData.append("thumbnail", options.thumbnail);
-    formData.append("name", options?.title || "Untitled");
-    formData.append("description", options?.description || "");
-    formData.append("privacy", options?.isPublic ? "public" : "private");
-    formData.append("category", options?.category || "entertainment");
-
-    const res = await clientApi.post<UploadResponse>(
-      `/api/files/videos`,
-      formData,
-      { headers: { "Content-Type": "multipart/form-data" } },
-    );
-
-    return res.data;
-  } catch (err) {
-    const axiosErr = err as AxiosError<{ message?: string }>;
-    return Promise.reject(axiosErr.response?.data || { message: "Upload failed" });
-  }
-};
-
 export const deleteVideo = async (id: string): Promise<void> => {
   await clientApi.delete(`/api/files/videos/${id}`);
 };
@@ -207,19 +173,32 @@ export const getVideoDownloadInfo = async (
   return res.data;
 };
 
-export const downloadVideo = async (
-  videoId: string,
-  resolution = "720p",
-): Promise<Blob> => {
+/** The one MP4 the converter prepared for this video.
+ *
+ *  The resolution parameter is gone: asking for one returned the HLS
+ *  playlist with a .mp4 name. The error is no longer replaced with a
+ *  fixed string either -- the server explains whether the video is still
+ *  encoding or has no downloadable file, and the caller showed "Failed to
+ *  download video" over the top of it. */
+export const downloadVideo = async (videoId: string): Promise<Blob> => {
   try {
     const res = await clientApi.get(`/api/files/videos/${videoId}/download`, {
-      params: { resolution },
       responseType: "blob",
     });
     return res.data;
   } catch (err) {
-    console.error("Download error:", err);
-    return Promise.reject({ message: "Failed to download video" });
+    // responseType "blob" applies to failures too, so the error body
+    // arrives as a Blob and every reader of response.data.message sees
+    // undefined. Decoding it here keeps the explanation the server sent.
+    const body = (err as AxiosError)?.response?.data;
+    if (body instanceof Blob) {
+      try {
+        (err as AxiosError).response!.data = JSON.parse(await body.text());
+      } catch {
+        // Not JSON -- leave it alone and let the caller's fallback show.
+      }
+    }
+    throw err;
   }
 };
 
@@ -227,7 +206,6 @@ export default {
   getVideos,
   getVideo,
   getStreamUrl,
-  uploadVideo,
   updateVideoPrivacy,
   deleteVideo,
   downloadVideo,

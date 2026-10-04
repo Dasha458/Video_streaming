@@ -98,6 +98,7 @@ export function useVideoQuery(videoId: string | undefined) {
                 dislikesCount: data.dislikes_count ?? 0,
                 dislikeCount: data.dislikes_count ?? 0,
                 userReaction: null,
+                isOwner: data.is_owner ?? false,
                 description: data.description || "No description provided for this video.",
                 timeAgo: timeAgo(createdAt),
             } satisfies VideoDetail;

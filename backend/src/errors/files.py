@@ -103,11 +103,32 @@ class VideoUploadFailedError(AppError):
 
 
 class DuplicateVideoError(AppError):
+    """The same file is already on the platform, uploaded by someone else.
+
+    The platform stores a given file once; that is the rule, not an
+    accident of the schema. The message says so in those words -- the old
+    one talked about a hash, which told the uploader nothing about what
+    to do, and it was the same message whether the earlier copy was
+    theirs or a stranger's. Nothing about the other video is revealed.
+    """
+
     code = "DUPLICATE_VIDEO"
     status_code = 409
 
     def __init__(self) -> None:
-        super().__init__(_("Video with the same hash already exists"))
+        super().__init__(
+            _("This video is already on the platform and cannot be uploaded twice")
+        )
+
+
+class AlreadyUploadedError(AppError):
+    """The uploader's own earlier copy -- which they can be told about."""
+
+    code = "ALREADY_UPLOADED"
+    status_code = 409
+
+    def __init__(self) -> None:
+        super().__init__(_("You have already uploaded this video"))
 
 
 class JobPublishFailedError(AppError):
@@ -135,3 +156,29 @@ class EmptyFileError(AppError):
 
     def __init__(self) -> None:
         super().__init__(_("The uploaded file is empty"))
+
+
+class DownloadNotReadyError(AppError):
+    """Asked for before the encode finished."""
+
+    code = "DOWNLOAD_NOT_READY"
+    status_code = 409
+
+    def __init__(self) -> None:
+        super().__init__(
+            _("This video is still being processed; the download is not ready yet")
+        )
+
+
+class DownloadUnavailableError(AppError):
+    """Ready, but no downloadable file was ever built for it.
+
+    True of everything uploaded before the converter started producing
+    one, and of a video whose remux failed while the encode stood.
+    """
+
+    code = "DOWNLOAD_UNAVAILABLE"
+    status_code = 404
+
+    def __init__(self) -> None:
+        super().__init__(_("No downloadable file is available for this video"))

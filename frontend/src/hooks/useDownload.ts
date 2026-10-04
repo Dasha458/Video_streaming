@@ -7,10 +7,13 @@ import type { VideoDetail } from "@api/types";
 
 interface UseDownloadProps {
   video: VideoDetail | null;
-  resolution: string;
 }
 
-export function useDownload({ video, resolution }: UseDownloadProps) {
+/** Fetches the single MP4 the converter built for this video.
+ *
+ *  There is no resolution to choose any more: asking for one returned an
+ *  HLS playlist saved under a .mp4 name. */
+export function useDownload({ video }: UseDownloadProps) {
   const { toast } = useToast();
 
   const handleDownload = useCallback(async () => {
@@ -23,9 +26,9 @@ export function useDownload({ video, resolution }: UseDownloadProps) {
     }
 
     try {
-      toast({ title: `Downloading ${resolution}...` });
+      toast({ title: "Preparing download..." });
 
-      const blob = await downloadVideo(video.id, resolution);
+      const blob = await downloadVideo(video.id);
 
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -33,7 +36,7 @@ export function useDownload({ video, resolution }: UseDownloadProps) {
 
       // Strip characters Windows/macOS reject in a filename.
       const safeTitle = (video.title || "video").replace(/[\\/:*?"<>|]+/g, "_");
-      a.download = `${safeTitle}_${resolution}.mp4`;
+      a.download = `${safeTitle}.mp4`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -49,7 +52,7 @@ export function useDownload({ video, resolution }: UseDownloadProps) {
         variant: "destructive",
       });
     }
-  }, [video, resolution, toast]);
+  }, [video, toast]);
 
   return { handleDownload };
 }

@@ -1,11 +1,12 @@
 import logging
+import re
 import uuid
+from datetime import datetime, timedelta, timezone
 from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 from uuid import NAMESPACE_DNS, UUID, uuid4, uuid5
 
-import xxhash
 from aio_pika.exceptions import AMQPException
 from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import UploadFile
@@ -15,19 +16,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.status_ids import (
     STATUS_FAILED_ID,
+    STATUS_PROCESSING_ID,
     STATUS_QUEUED_ID,
     STATUS_READY_ID,
     privacy_id_for,
 )
 from src.errors.files import (
+    AlreadyUploadedError,
     ChannelNotFoundError,
+    DownloadNotReadyError,
+    DownloadUnavailableError,
     DuplicateVideoError,
     EmptyFileError,
     FileTooLargeError,
     InvalidThumbnailFormatError,
     InvalidVideoFormatError,
     JobPublishFailedError,
-    ResolutionNotFoundError,
     S3DeletionError,
     S3DownloadError,
 )
@@ -35,28 +39,12 @@ from src.errors.videos import VideoNotFoundError
 from src.models.channel import Channel
 from src.models.user import User
 from src.models.video import Video
-from src.models.video_resolutions import VideoResolution
 from src.schemas.endpoint import FileMeta, FileResponse
 
 if TYPE_CHECKING:
     from faststream.rabbit import RabbitBroker
 
     from src.infrastructure.s3_client import S3Client
-
-
-async def _hash_and_size(uploaded_file: UploadFile) -> tuple[str, int]:
-    hasher = xxhash.xxh3_128()
-    block_size = 1024 * 1024
-
-    await uploaded_file.seek(0)
-    size = 0
-
-    # hash + size in one pass
-    while chunk := await uploaded_file.read(block_size):
-        hasher.update(chunk)
-        size += len(chunk)
-    await uploaded_file.seek(0)
-    return hasher.hexdigest(), size
 
 
 class FileService:
@@ -105,12 +93,6 @@ class FileService:
         )
         await self.session.commit()
 
-    async def _upload_video_file(self, video_id: UUID, video: UploadFile) -> str:
-        video_suffix = Path(video.filename or "").suffix
-        new_filename = f"{video_id}{video_suffix}"
-        await self.s3_client.upload_file(new_filename, video.file, bucket_name="videos")
-        return new_filename
-
     async def _check_video_size(self, size: int) -> None:
         if size <= 0:
             logging.warning("Empty video file")
@@ -153,62 +135,148 @@ class FileService:
         await self.session.commit()
         return inserted_id
 
-    async def upload_video(
+    #: How long a video may sit in "queued" before its hash is treated as
+    #: abandoned. The encoder picks a job up in seconds; a row still queued
+    #: after this never got one -- the storage upload or the publish died
+    #: after the row was committed. Long enough that a genuine concurrent
+    #: upload of the same file is never mistaken for wreckage.
+    STALE_QUEUE_GRACE = timedelta(minutes=15)
+
+    async def _video_with_hash(self, video_hash: str) -> Video | None:
+        """The existing row that owns this hash, with its channel loaded."""
+        result = await self.session.execute(
+            select(Video, Channel.user_id)
+            .join(Channel, Channel.id == Video.channel_id)
+            .where(Video.hash == video_hash)
+        )
+        row = result.first()
+        if row is None:
+            return None
+        video, owner_id = row
+        # Carried alongside rather than looked up again by the caller.
+        video.__dict__["_owner_id"] = owner_id
+        return video
+
+    def _is_abandoned(self, existing: Video) -> bool:
+        """Is this row wreckage holding a hash nobody can use?
+
+        A failed encode is finished and will not change on its own. A row
+        still queued past the grace period never reached the encoder at
+        all: `_insert_video` commits before the file is uploaded, so a
+        storage failure leaves exactly this -- a row the owner cannot
+        delete and a hash that blocks them re-uploading their own file
+        for good.
+        """
+        if existing.status_id == STATUS_FAILED_ID:
+            return True
+        if existing.status_id != STATUS_QUEUED_ID:
+            return False
+        created = existing.created_at
+        if created is None:
+            return True
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) - created > self.STALE_QUEUE_GRACE
+
+    async def _reclaim(self, existing: Video) -> None:
+        """Delete the dead row and anything it left in storage."""
+        logging.info(
+            "Reclaiming an abandoned video row so its hash can be reused",
+            extra={"video_id": str(existing.id)},
+        )
+        try:
+            await self.s3_client.delete_prefix(
+                f"{existing.id}/", bucket_name="videos"
+            )
+            await self._delete_original_upload(existing)
+        except (BotoCoreError, ClientError, S3DeletionError) as e:
+            # The row is the thing blocking the re-upload; leftover bytes
+            # are the orphan sweeper's problem, not this request's.
+            logging.warning(
+                f"Could not clear storage for reclaimed video {existing.id}: {e}"
+            )
+        await self.session.execute(delete(Video).where(Video.id == existing.id))
+        await self.session.commit()
+
+    async def register_uploaded_video(
         self,
         *,
-        video: UploadFile,
-        thumbnail: UploadFile | None,
+        video_id: UUID,
+        object_key: str,
+        video_hash: str,
+        size: int,
         name: str,
         description: str,
         privacy: str,
         category: str,
         user_id: UUID,
+        thumbnail: UploadFile | None,
     ) -> FileResponse:
+        """Create the video for a file that is already in storage.
 
-        if not (video.content_type or "").startswith("video/"):
-            raise InvalidVideoFormatError()
-
+        This used to be the tail of a single-shot upload that committed
+        the row *before* sending the bytes -- so a storage failure left a
+        row stuck in "queued" that its owner could not delete and whose
+        hash blocked them from re-uploading their own file. The bytes
+        arrive first now, in parts, and nothing exists in the database
+        until they are all there.
+        """
         if thumbnail and not (thumbnail.content_type or "").startswith("image/"):
             raise InvalidThumbnailFormatError()
-
-        video_hash, video_size = await _hash_and_size(video)
-        await self._check_video_size(video_size)
-        video_id = uuid.uuid4()
 
         channel_id = await self._get_channel_id(user_id)
 
         inserted = await self._insert_video(
-            video_id,
-            name,
-            description,
-            channel_id,
-            video_size,
-            video_hash,
-            privacy,
-            category,
+            video_id, name, description, channel_id,
+            size, video_hash, privacy, category,
         )
 
         if not inserted:
-            raise DuplicateVideoError()
+            # One file, one video on the platform -- the rule, not an
+            # accident of the unique index. What differs is who is told
+            # what, and whether the hash is really still in use.
+            existing = await self._video_with_hash(video_hash)
+            if existing is None:
+                # Removed between the insert and this lookup; the file is
+                # free again, so let the caller try once more rather than
+                # refuse something that is no longer true.
+                raise DuplicateVideoError()
+
+            own = existing.__dict__.get("_owner_id") == user_id
+
+            if own and self._is_abandoned(existing):
+                await self._reclaim(existing)
+                inserted = await self._insert_video(
+                    video_id, name, description, channel_id,
+                    size, video_hash, privacy, category,
+                )
+                if not inserted:
+                    raise DuplicateVideoError()
+            elif own:
+                raise AlreadyUploadedError()
+            else:
+                # Nothing about the other video is revealed -- not its id,
+                # not its channel, not whether it is public.
+                raise DuplicateVideoError()
 
         if thumbnail:
             await self._upload_thumbnail(video_id, thumbnail)
-
-        filename = await self._upload_video_file(video_id, video)
 
         try:
             if self.broker is None:
                 raise RuntimeError("Broker is not configured")
 
             await self.broker.publish(
-                filename,
+                object_key,
                 queue="video.encode",
                 priority=10,
             )
         except (RuntimeError, AMQPException, OSError) as e:
-            # Compensate: a video row with no encode job would sit in "queued"
-            # forever, so the upload is rolled back whatever the cause.
-            logging.error(f"Upload pipeline failed for {video_id}: {e}")
+            # Compensate: a video row with no encode job would sit in
+            # "queued" for ever, so the row is rolled back whatever the
+            # cause. The stored object is the caller's to clean up -- it
+            # is the one that put it there.
+            logging.error(f"Could not queue encoding for {video_id}: {e}")
 
             await self.session.execute(delete(Video).where(Video.id == video_id))
             await self.session.commit()
@@ -216,19 +284,28 @@ class FileService:
 
         return FileResponse(
             status="accepted",
-            files=[
-                FileMeta(
-                    file_id=video_id,
-                    filename=name,
-                    size=video_size,
-                )
-            ],
+            files=[FileMeta(file_id=video_id, filename=name, size=size)],
         )
 
-    async def get_video_file(
-        self, video_id: UUID, user_id: UUID, resolution: Optional[str] = None
-    ) -> tuple[str, str, str]:
-        """Return (object_key, filename, media_type) for streaming"""
+    #: Written by the converter beside the playlists, once, at encode time.
+    DOWNLOAD_KEY = "download.mp4"
+
+    async def get_video_file(self, video_id: UUID, user_id: UUID) -> tuple[str, str, str]:
+        """Return (object_key, filename, media_type) for the download.
+
+        There is one downloadable file per video and the converter builds
+        it: a 720p MP4 remuxed from the rendition it already produced.
+
+        Both earlier routes were broken, which is why neither was ever
+        reported. Asked for a resolution this returned the .m3u8 playlist
+        with a .mp4 filename -- a few hundred bytes of text saved as a
+        video. Asked for the original it looked up the key
+        ``str(video.id)``, while the upload is stored as ``<id><suffix>``
+        and is deleted by the converter the moment the encode succeeds.
+
+        Only the owner reaches this: the join on the channel is the
+        authorisation, and it was already here.
+        """
         result = await self.session.execute(
             select(Video)
             .join(Channel, Channel.id == Video.channel_id)
@@ -238,27 +315,25 @@ class FileService:
         if not video:
             raise VideoNotFoundError()
 
-        if resolution:
-            target_height = int(resolution.rstrip("p"))
-            res_result = await self.session.execute(
-                select(VideoResolution).where(
-                    (VideoResolution.video_id == video_id)
-                    & (VideoResolution.height == target_height)
-                )
-            )
-            res_obj = res_result.scalar_one_or_none()
-            if not res_obj:
-                raise ResolutionNotFoundError(resolution)
-            object_key = res_obj.playlist_path.lstrip("/")
-            filename = f"{video.name}_{res_obj.height}p.m3u8"
-            media_type = "application/vnd.apple.mpegurl"
-        else:
-            # Default/original file
-            object_key = str(video.id)
-            filename = f"{video.name}.mp4"
-            media_type = "video/mp4"
+        if video.status_id != STATUS_READY_ID:
+            # Saying "not found" for a video the owner is looking at in
+            # Studio, labelled Processing, explains nothing.
+            raise DownloadNotReadyError()
 
-        return object_key, filename, media_type
+        object_key = f"{video.id}/{self.DOWNLOAD_KEY}"
+        if not await self.s3_client.list_keys(object_key, bucket_name="videos"):
+            # Encoded before the converter built these, or the remux
+            # failed and the encode was allowed to stand.
+            raise DownloadUnavailableError()
+
+        # Characters Windows and macOS refuse in a filename, and the
+        # quote that would end the Content-Disposition header early.
+        # The replacements are stripped too: a title made only of slashes
+        # would otherwise be handed over as "_.mp4".
+        safe_name = (
+            re.sub(r'[\\/:*?"<>|\r\n]+', "_", video.name).strip(" ._") or "video"
+        )
+        return object_key, f"{safe_name}.mp4", "video/mp4"
 
     def stream_file(
         self,

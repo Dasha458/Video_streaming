@@ -8,6 +8,7 @@ from .playlist import Playlist
 from .privacy_status import PrivacyStatus
 from .reaction_type import ReactionType
 from .subscription import Subscription
+from .upload_session import UploadSession
 from .user import User
 from .user_roles import Role
 from .user_status import UserStatus
@@ -36,6 +37,7 @@ __all__ = [
     "VideoWatchSession",
     "Notification",
     "Subscription",
+    "UploadSession",
     "WatchHistory",
     "WatchLater",
     "VideoResolution",

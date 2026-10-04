@@ -129,6 +129,42 @@ class S3Client:
             with p.open("rb") as handle:
                 await self.upload_file(key, handle, bucket_name)
 
+    async def list_keys(
+        self, prefix: str, bucket_name: Optional[str] = None
+    ) -> list[str]:
+        """Every object key under `prefix`."""
+        if not bucket_name:
+            raise ValueError("bucket_name must be provided")
+        elif bucket_name not in self.bucket_names:
+            raise ValueError("bucket_name is not in bucket_names")
+
+        keys: list[str] = []
+        async with self._get_client() as client:
+            paginator = client.get_paginator("list_objects_v2")
+            async for page in paginator.paginate(Bucket=bucket_name, Prefix=prefix):
+                keys.extend(obj["Key"] for obj in page.get("Contents", []))
+        return keys
+
+    async def download_prefix(
+        self, prefix: str, directory: Path, bucket_name: Optional[str] = None
+    ) -> int:
+        """Fetch everything under `prefix` into `directory`, keeping the
+        layout below the prefix.
+
+        A rendition is a playlist plus its segments, and the playlist
+        names the segments by relative path -- so they have to sit beside
+        it on disk for ffmpeg to read them back.
+        """
+        keys = await self.list_keys(prefix, bucket_name)
+        async with self._get_client() as client:
+            for key in keys:
+                target = directory / key[len(prefix) :].lstrip("/")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                response = await client.get_object(Bucket=bucket_name, Key=key)
+                async with response["Body"] as stream:
+                    target.write_bytes(await stream.read())
+        return len(keys)
+
     async def delete_file(
         self, object_name: str, bucket_name: Optional[str] = None
     ) -> None:

@@ -149,6 +149,126 @@ class S3Client:
                 # nothing.
                 raise VideoUploadFailedError() from e
 
+    # ── Multipart driven by the client ────────────────────────────────
+    # upload_file above runs a multipart upload of its own, from a file
+    # the server already holds in full. These are the same operation with
+    # the parts arriving one HTTP request at a time, so a dropped
+    # connection costs one part rather than the whole upload -- and no
+    # single request is ever larger than a part.
+
+    async def begin_multipart(self, key: str, bucket_name: str) -> str:
+        """Start an upload and return the id the parts belong to."""
+        self._check_bucket(bucket_name)
+        async with self._get_client() as client:
+            response = await client.create_multipart_upload(
+                Bucket=bucket_name, Key=key
+            )
+            return str(response["UploadId"])
+
+    async def upload_part(
+        self, key: str, bucket_name: str, upload_id: str, part_number: int, body: bytes
+    ) -> str:
+        """Store one part and return its ETag, which completion needs."""
+        self._check_bucket(bucket_name)
+        async with self._get_client() as client:
+            response = await client.upload_part(
+                Bucket=bucket_name,
+                Key=key,
+                UploadId=upload_id,
+                PartNumber=part_number,
+                Body=body,
+            )
+            return str(response["ETag"])
+
+    async def list_parts(
+        self, key: str, bucket_name: str, upload_id: str
+    ) -> list[dict]:
+        """The parts storage holds, so a resumed upload can skip them.
+
+        Asked of storage rather than remembered in the database: storage
+        is the thing that decides whether a part exists, and a session
+        row that disagreed with it would resume into a corrupt file.
+        """
+        self._check_bucket(bucket_name)
+        parts: list[dict] = []
+        async with self._get_client() as client:
+            paginator = client.get_paginator("list_parts")
+            async for page in paginator.paginate(
+                Bucket=bucket_name, Key=key, UploadId=upload_id
+            ):
+                for part in page.get("Parts", []):
+                    parts.append(
+                        {
+                            "PartNumber": part["PartNumber"],
+                            "ETag": part["ETag"],
+                            "Size": part.get("Size", 0),
+                        }
+                    )
+        return sorted(parts, key=lambda p: p["PartNumber"])
+
+    async def complete_multipart(
+        self, key: str, bucket_name: str, upload_id: str, parts: list[dict]
+    ) -> None:
+        """Assemble the parts into the object."""
+        self._check_bucket(bucket_name)
+        async with self._get_client() as client:
+            await client.complete_multipart_upload(
+                Bucket=bucket_name,
+                Key=key,
+                UploadId=upload_id,
+                MultipartUpload={
+                    "Parts": [
+                        {"PartNumber": p["PartNumber"], "ETag": p["ETag"]}
+                        for p in parts
+                    ]
+                },
+            )
+
+    async def abort_multipart(
+        self, key: str, bucket_name: str, upload_id: str
+    ) -> None:
+        """Discard an unfinished upload.
+
+        Worth doing explicitly: an abandoned multipart upload holds the
+        parts already sent and appears in no object listing, so the space
+        is spent and invisible.
+        """
+        self._check_bucket(bucket_name)
+        try:
+            async with self._get_client() as client:
+                await client.abort_multipart_upload(
+                    Bucket=bucket_name, Key=key, UploadId=upload_id
+                )
+        except ClientError as e:
+            logging.warning("Could not abort upload %s for %s: %s", upload_id, key, e)
+
+    async def iter_object(
+        self, key: str, bucket_name: str, chunk_size: int = 1024 * 1024
+    ) -> AsyncGenerator[bytes, None]:
+        """Read an object back in pieces.
+
+        Completion hashes the assembled file this way. The hash has to be
+        computed by the server: it decides whether the upload is a
+        duplicate, so a client-supplied one would be a client deciding.
+        """
+        self._check_bucket(bucket_name)
+        async with self._get_client() as client:
+            response = await client.get_object(Bucket=bucket_name, Key=key)
+            async with response["Body"] as stream:
+                # Through the underlying aiohttp stream: in this version
+                # the body is a ClientResponse, whose read() takes no
+                # size. Reading it whole would pull a 500 MB object into
+                # memory just to hash it.
+                async for chunk in stream.content.iter_chunked(chunk_size):
+                    if chunk:
+                        yield chunk
+
+    def _check_bucket(self, bucket_name: str) -> None:
+        if not bucket_name:
+            raise ValueError("bucket_name must be provided")
+        if bucket_name not in self.bucket_names:
+            raise ValueError("bucket_name is not in bucket_names")
+
     async def delete_file(
         self, object_name: str, bucket_name: Optional[str] = None
     ) -> None:

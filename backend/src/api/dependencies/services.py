@@ -18,6 +18,7 @@ from src.services.channels import ChannelService
 from src.services.comments import CommentService
 from src.services.file_signing import FileSigningService
 from src.services.files import FileService
+from src.services.uploads import UploadService
 from src.services.github_oauth_service import GitHubOAuthService
 from src.services.health import HealthService
 from src.services.history import HistoryService
@@ -55,6 +56,17 @@ def get_file_service(
     broker: "RabbitBroker" = Depends(get_rabbit_broker),
 ) -> FileService:
     return FileService(session, s3_client, broker)
+
+
+def get_upload_service(
+    session: "AsyncSession" = Depends(get_async_session),
+    s3_client: "S3Client" = Depends(get_s3_client),
+    broker: "RabbitBroker" = Depends(get_rabbit_broker),
+) -> UploadService:
+    # Built on the file service rather than beside it: creating the video,
+    # the duplicate rule and queueing the encode are the same work
+    # whatever delivered the bytes.
+    return UploadService(session, s3_client, FileService(session, s3_client, broker))
 
 
 def get_file_signing_service(
