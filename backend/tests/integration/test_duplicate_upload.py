@@ -17,8 +17,8 @@ person who uploaded the file could never upload their own file again.
 """
 
 from datetime import timedelta
-from uuid import uuid4
 from unittest.mock import AsyncMock
+from uuid import uuid4
 
 import pytest
 from sqlalchemy import select
@@ -175,7 +175,9 @@ async def test_a_queue_entry_from_a_moment_ago_is_left_alone(
     with pytest.raises(AlreadyUploadedError):
         await _upload(_service(session), user.id)
 
-    assert await session.scalar(select(Video.id).where(Video.id == fresh.id)) is not None
+    assert (
+        await session.scalar(select(Video.id).where(Video.id == fresh.id)) is not None
+    )
 
 
 @pytest.mark.asyncio
@@ -218,7 +220,9 @@ async def test_two_different_files_from_the_same_person_are_both_accepted(
     service = _service(session)
 
     first = await _upload(service, user.id)
-    second = await _upload(service, user.id, video_hash="ffffffffffffffffffffffffffffffff")
+    second = await _upload(
+        service, user.id, video_hash="ffffffffffffffffffffffffffffffff"
+    )
 
     assert first.status == "accepted"
     assert second.status == "accepted"

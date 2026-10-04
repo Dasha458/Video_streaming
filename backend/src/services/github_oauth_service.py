@@ -7,6 +7,7 @@ import jwt as pyjwt
 from httpx_oauth.clients.github import GitHubOAuth2
 from httpx_oauth.oauth2 import GetAccessTokenError
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import GitHubOAuthSettings, JWTSettings
@@ -14,6 +15,7 @@ from src.errors.auth import (
     GitHubCodeExchangeError,
     GitHubEmailNotFoundError,
     GitHubUserInfoError,
+    GitHubUsernameUnavailableError,
     InvalidOAuthStateError,
     UserNotFoundError,
 )
@@ -84,35 +86,59 @@ class GitHubOAuthService:
             raise InvalidOAuthStateError()
 
     async def _fetch_github_user_email(self, access_token: str) -> tuple[dict, str]:
+        """The GitHub profile, and an address GitHub has verified.
+
+        This address decides which account somebody is signed into: an
+        existing user with the same email is linked rather than a new one
+        created. So it has to be an address GitHub says belongs to them.
+
+        It used to prefer ``github_data["email"]`` -- the public profile
+        field, which a user sets freely and GitHub does not verify in
+        this sense -- and only fell back to the verified list when that
+        was empty. Setting the profile email to somebody else's address
+        was therefore enough to be signed in as them here.
+
+        The verified list is now the only source. The profile field is
+        accepted only when it appears in that list.
+        """
+        headers = {
+            "Authorization": f"token {access_token}",
+            "Accept": "application/json",
+        }
         async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                "https://api.github.com/user",
-                headers={
-                    "Authorization": f"token {access_token}",
-                    "Accept": "application/json",
-                },
-            )
+            resp = await client.get("https://api.github.com/user", headers=headers)
             if resp.status_code != 200:
                 raise GitHubUserInfoError()
             github_data = resp.json()
 
-            email = github_data.get("email")
-            if not email:
-                emails_resp = await client.get(
-                    "https://api.github.com/user/emails",
-                    headers={
-                        "Authorization": f"token {access_token}",
-                        "Accept": "application/json",
-                    },
-                )
-                if emails_resp.status_code == 200:
-                    for entry in emails_resp.json():
-                        if entry.get("primary") and entry.get("verified"):
-                            email = entry["email"]
-                            break
+            emails_resp = await client.get(
+                "https://api.github.com/user/emails", headers=headers
+            )
 
-        if not email:
+        if emails_resp.status_code != 200:
+            # Without the verified list there is no address worth
+            # trusting, and the profile field is not a substitute.
             raise GitHubEmailNotFoundError()
+
+        verified = [
+            entry["email"]
+            for entry in emails_resp.json()
+            if entry.get("verified") and entry.get("email")
+        ]
+        if not verified:
+            raise GitHubEmailNotFoundError()
+
+        profile_email = github_data.get("email")
+        if profile_email and profile_email in verified:
+            # Their own choice, and verified: honour it.
+            email = profile_email
+        else:
+            primary = [
+                entry["email"]
+                for entry in emails_resp.json()
+                if entry.get("verified") and entry.get("primary")
+            ]
+            email = primary[0] if primary else verified[0]
 
         return github_data, email
 
@@ -148,29 +174,64 @@ class GitHubOAuthService:
         user_result = await self.session.execute(
             select(User).where(User.email == email)  # type: ignore[arg-type]
         )
-        user = user_result.scalar_one_or_none()
+        # .unique() is required: oauth_accounts is a joined eager load, so
+        # SQLAlchemy refuses to collapse the duplicated rows unless asked.
+        # Without it this raised the moment a matching account existed --
+        # which is exactly the case this query is for, linking a GitHub
+        # sign-in to an account that already had a password.
+        user = user_result.unique().scalar_one_or_none()
 
         if not user:
-            username = github_login
-            taken = await self.session.execute(
-                select(User).where(User.username == username)
-            )
-            if taken.scalar_one_or_none():
-                username = f"{github_login}_{github_id[:6]}"
+            user = await self._create_user(email, github_login, github_id)
 
-            user = User(
-                email=email,
-                username=username,
-                hashed_password=bcrypt.hashpw(
-                    secrets.token_bytes(32), bcrypt.gensalt()
-                ).decode(),
-                is_active=True,
-                is_superuser=False,
-                is_verified=True,
-            )
-            self.session.add(user)
-            await self.session.flush()
+        return await self._link(user, github_id, email)
 
+    async def _create_user(self, email: str, github_login: str, github_id: str) -> User:
+        """Create the account, working around a username already in use.
+
+        This used to look the username up and then insert it, which is
+        two steps with a gap in between: two sign-ups arriving together
+        both found the name free and the second one got an IntegrityError
+        and a 500 at the end of an otherwise successful GitHub sign-in.
+
+        Each attempt runs in a savepoint, because an IntegrityError
+        poisons the transaction -- without one the retry would fail on
+        the broken session rather than on the name.
+        """
+        candidates = [
+            github_login,
+            f"{github_login}_{github_id[:6]}",
+            f"{github_login}_{github_id}",
+        ]
+        for username in candidates:
+            try:
+                async with self.session.begin_nested():
+                    user = User(
+                        email=email,
+                        username=username,
+                        hashed_password=bcrypt.hashpw(
+                            secrets.token_bytes(32), bcrypt.gensalt()
+                        ).decode(),
+                        is_active=True,
+                        is_superuser=False,
+                        is_verified=True,
+                    )
+                    self.session.add(user)
+                    await self.session.flush()
+                return user
+            except IntegrityError:
+                # The username, or this email arriving twice at once.
+                # Either way, look before trying the next name.
+                existing = await self.session.execute(
+                    select(User).where(User.email == email)  # type: ignore[arg-type]
+                )
+                raced = existing.unique().scalar_one_or_none()
+                if raced is not None:
+                    return raced
+
+        raise GitHubUsernameUnavailableError()
+
+    async def _link(self, user: User, github_id: str, email: str) -> User:
         new_oauth = OAuthAccount(
             oauth_name=GITHUB_OAUTH_NAME,
             # Deliberately not the token. It was stored here and never read

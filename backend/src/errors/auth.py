@@ -67,11 +67,30 @@ class GitHubUserInfoError(AppError):
 
 
 class GitHubEmailNotFoundError(AppError):
+    """No address GitHub has verified.
+
+    Only a verified address is accepted, because this address decides
+    which account the person is signed into: an existing user with the
+    same email is linked rather than a new one created.
+    """
+
     code = "GITHUB_EMAIL_NOT_FOUND"
     status_code = 400
 
     def __init__(self) -> None:
-        super().__init__(_("GitHub account has no accessible email"))
+        super().__init__(_("GitHub account has no verified email address"))
+
+
+class GitHubUsernameUnavailableError(AppError):
+    """Every username derived from the GitHub login was taken."""
+
+    code = "GITHUB_USERNAME_UNAVAILABLE"
+    status_code = 409
+
+    def __init__(self) -> None:
+        super().__init__(
+            _("Could not create an account automatically; please sign up directly")
+        )
 
 
 class WeakPasswordError(AppError):

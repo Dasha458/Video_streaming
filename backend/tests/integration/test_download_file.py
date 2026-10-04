@@ -99,7 +99,7 @@ async def test_somebody_elses_video_is_not_downloadable(session: AsyncSession):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("status_id", [STATUS_PROCESSING_ID, STATUS_FAILED_ID])
 async def test_a_video_that_is_not_ready_says_so(session: AsyncSession, status_id):
-    """"Not found", for a video the owner is looking at in Studio,
+    """ "Not found", for a video the owner is looking at in Studio,
     explains nothing."""
     user = await make_user(session)
     channel = await make_channel(session, user)

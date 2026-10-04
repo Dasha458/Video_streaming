@@ -9,6 +9,21 @@ import pytest
 from tests.conftest import TEST_USER_EMAIL, TEST_USER_USERNAME
 
 
+def _result(value):
+    """A stand-in for a SQLAlchemy Result.
+
+    `.unique()` returns the same object, as the real one does. The old
+    mocks answered scalar_one_or_none() directly and nothing else, so a
+    query that failed to call .unique() -- which a real User query must,
+    because oauth_accounts is a joined eager load -- passed here and
+    raised against the database.
+    """
+    result = MagicMock()
+    result.unique.return_value = result
+    result.scalar_one_or_none.return_value = value
+    return result
+
+
 class TestRegisterEndpoint:
     """POST /api/auth/register — handled by fastapi-users router."""
 
@@ -185,8 +200,7 @@ class TestCheckUserEndpoint:
         from src.infrastructure import get_async_session
 
         session = AsyncMock()
-        result_free = MagicMock()
-        result_free.scalar_one_or_none.return_value = None
+        result_free = _result(None)
         session.execute = AsyncMock(return_value=result_free)
         original = app.dependency_overrides.get(get_async_session)
         app.dependency_overrides[get_async_session] = lambda: session
@@ -209,10 +223,8 @@ class TestCheckUserEndpoint:
         from src.infrastructure import get_async_session
 
         session = AsyncMock()
-        taken = MagicMock()
-        taken.scalar_one_or_none.return_value = mock_user
-        free = MagicMock()
-        free.scalar_one_or_none.return_value = None
+        taken = _result(mock_user)
+        free = _result(None)
         session.execute = AsyncMock(side_effect=[taken, free])
         original = app.dependency_overrides.get(get_async_session)
         app.dependency_overrides[get_async_session] = lambda: session
@@ -235,10 +247,8 @@ class TestCheckUserEndpoint:
         from src.infrastructure import get_async_session
 
         session = AsyncMock()
-        free = MagicMock()
-        free.scalar_one_or_none.return_value = None
-        taken = MagicMock()
-        taken.scalar_one_or_none.return_value = mock_user
+        free = _result(None)
+        taken = _result(mock_user)
         session.execute = AsyncMock(side_effect=[free, taken])
         original = app.dependency_overrides.get(get_async_session)
         app.dependency_overrides[get_async_session] = lambda: session
@@ -265,8 +275,7 @@ class TestGetUserByUsernameEndpoint:
         from src.infrastructure import get_async_session
 
         session = AsyncMock()
-        result = MagicMock()
-        result.scalar_one_or_none.return_value = mock_user
+        result = _result(mock_user)
         session.execute = AsyncMock(return_value=result)
         original = app.dependency_overrides.get(get_async_session)
         app.dependency_overrides[get_async_session] = lambda: session
@@ -284,8 +293,7 @@ class TestGetUserByUsernameEndpoint:
         from src.infrastructure import get_async_session
 
         session = AsyncMock()
-        result = MagicMock()
-        result.scalar_one_or_none.return_value = None
+        result = _result(None)
         session.execute = AsyncMock(return_value=result)
         original = app.dependency_overrides.get(get_async_session)
         app.dependency_overrides[get_async_session] = lambda: session
@@ -624,7 +632,6 @@ class TestSessionsEndWhenThePasswordChanges:
 
     @staticmethod
     def _user(hashed: str):
-
 
         user = MagicMock()
         user.id = uuid.UUID("11111111-1111-1111-1111-111111111111")

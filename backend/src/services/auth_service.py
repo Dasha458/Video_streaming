@@ -33,9 +33,16 @@ class AuthService:
             name = new_username.strip()
             if not name:
                 raise UsernameEmptyError()
-            existing = await self.session.scalar(
+            # .unique() is required on any User result: oauth_accounts is
+            # a joined eager load (fastapi-users needs it that way), and
+            # SQLAlchemy refuses to collapse the duplicated rows unless
+            # asked. Without it this raised InvalidRequestError the moment
+            # a row actually matched -- so "that username is taken" was an
+            # internal error instead.
+            taken = await self.session.execute(
                 select(User).where(User.username == name, User.id != user.id)  # type: ignore[arg-type]
             )
+            existing = taken.unique().scalar_one_or_none()
             if existing:
                 raise UsernameTakenError()
             user.username = name
@@ -70,16 +77,17 @@ class AuthService:
         email_result = await self.session.execute(
             select(User).where(User.email == email)  # type: ignore[arg-type]
         )
+        # See update_username: a User result has to be uniquified.
         return (
-            username_result.scalar_one_or_none() is not None,
-            email_result.scalar_one_or_none() is not None,
+            username_result.unique().scalar_one_or_none() is not None,
+            email_result.unique().scalar_one_or_none() is not None,
         )
 
     async def get_user_by_username(self, username: str) -> User:
         result = await self.session.execute(
             select(User).where(User.username == username)
         )
-        user = result.scalar_one_or_none()
+        user = result.unique().scalar_one_or_none()
         if not user:
             raise UserNotFoundError()
         return user

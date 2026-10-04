@@ -13,7 +13,6 @@ parts arrived, are both checked against the real thing.
 
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
-from uuid import uuid4
 
 import pytest
 from sqlalchemy import select, update
@@ -241,9 +240,7 @@ class TestCompleting:
         assert await _session_row(session, started.upload_id) is None
 
     @pytest.mark.asyncio
-    async def test_completing_with_nothing_sent_is_refused(
-        self, session: AsyncSession
-    ):
+    async def test_completing_with_nothing_sent_is_refused(self, session: AsyncSession):
         s3 = _s3(parts=[])
         user, service, started = await _started(session, s3)
 
@@ -259,9 +256,7 @@ class TestCompleting:
             )
 
     @pytest.mark.asyncio
-    async def test_the_session_does_not_outlive_the_upload(
-        self, session: AsyncSession
-    ):
+    async def test_the_session_does_not_outlive_the_upload(self, session: AsyncSession):
         content = b"x" * 120
         s3 = _s3(stored=content, parts=[_part(1)])
         user, service, started = await _started(session, s3, size=len(content))
