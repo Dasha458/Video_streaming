@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -32,3 +32,14 @@ class Notification(Base):
     )
 
     user: Mapped["User"] = relationship(back_populates="notifications")
+
+    # Both exist in the database -- migration b9c1d2e3f4a5 created them --
+    # and neither was declared here, so `alembic revision --autogenerate`
+    # offered to drop them on every run. The next person to accept that
+    # offer would have removed the indexes the notification list reads on.
+    # They are declared rather than dropped because the list filters on
+    # exactly these two columns.
+    __table_args__ = (
+        Index("ix_notifications_user_id", "user_id"),
+        Index("ix_notifications_is_read", "is_read"),
+    )

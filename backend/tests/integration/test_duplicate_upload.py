@@ -17,13 +17,11 @@ person who uploaded the file could never upload their own file again.
 """
 
 from datetime import timedelta
-from io import BytesIO
+from uuid import uuid4
 from unittest.mock import AsyncMock
 
 import pytest
-from fastapi import UploadFile
 from sqlalchemy import select
-from starlette.datastructures import Headers
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.status_ids import (
@@ -57,26 +55,23 @@ def _service(session: AsyncSession, s3=None) -> FileService:
     return FileService(session=session, s3_client=s3 or _s3(), broker=broker)
 
 
-def _Upload(content: bytes = b"the same bytes every time") -> UploadFile:
-    """A real UploadFile: the service seeks and streams it, so a stub that
-    only answers read() passes for the wrong reason."""
-    return UploadFile(
-        file=BytesIO(content),
-        filename="clip.mp4",
-        size=len(content),
-        headers=Headers({"content-type": "video/mp4"}),
-    )
+#: The upload is in storage by the time any of this runs, so the hash is
+#: a value, not a file to read.
+HASH_OF_THE_FILE = "0123456789abcdef0123456789abcdef"
 
 
-async def _upload(service: FileService, user_id):
-    return await service.upload_video(
-        video=_Upload(),
-        thumbnail=None,
+async def _upload(service: FileService, user_id, video_hash: str = HASH_OF_THE_FILE):
+    return await service.register_uploaded_video(
+        video_id=uuid4(),
+        object_key="irrelevant.mp4",
+        video_hash=video_hash,
+        size=25,
         name="clip",
         description="",
         privacy="public",
         category="general",
         user_id=user_id,
+        thumbnail=None,
     )
 
 
@@ -85,10 +80,7 @@ async def _existing(session: AsyncSession, channel, *, status_id, created_at=Non
     video = await make_video(
         session, channel, status_id=status_id, created_at=created_at
     )
-    # The hash the service computes for _Upload's bytes, whatever it is.
-    from src.services.files import _hash_and_size
-
-    video.hash, _ = await _hash_and_size(_Upload())
+    video.hash = HASH_OF_THE_FILE
     await session.flush()
     return video
 
@@ -226,15 +218,7 @@ async def test_two_different_files_from_the_same_person_are_both_accepted(
     service = _service(session)
 
     first = await _upload(service, user.id)
-    second = await service.upload_video(
-        video=_Upload(b"entirely different bytes"),
-        thumbnail=None,
-        name="another clip",
-        description="",
-        privacy="public",
-        category="general",
-        user_id=user.id,
-    )
+    second = await _upload(service, user.id, video_hash="ffffffffffffffffffffffffffffffff")
 
     assert first.status == "accepted"
     assert second.status == "accepted"

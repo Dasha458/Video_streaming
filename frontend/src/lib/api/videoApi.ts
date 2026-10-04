@@ -5,7 +5,7 @@ import { timeAgo } from "@/utils/timeAgo";
 import type {
   Video,
   VideoPreview,
-  UploadResponse,
+
   DownloadResponse,
 } from "./types";
 
@@ -144,40 +144,6 @@ export const getVideoPreviewsByCategory = async (
   return (res.data.items || []).map(mapToPreview);
 };
 
-export const uploadVideo = async (
-  file: File,
-  options?: {
-    title?: string;
-    description?: string;
-    thumbnail?: File;
-    isPublic?: boolean;
-    category?: string;
-  },
-): Promise<UploadResponse> => {
-  try {
-    // Everything goes in the multipart body: a title or description in the
-    // query string would be recorded in the gateway's access log.
-    const formData = new FormData();
-    formData.append("video", file);
-    if (options?.thumbnail) formData.append("thumbnail", options.thumbnail);
-    formData.append("name", options?.title || "Untitled");
-    formData.append("description", options?.description || "");
-    formData.append("privacy", options?.isPublic ? "public" : "private");
-    formData.append("category", options?.category || "entertainment");
-
-    const res = await clientApi.post<UploadResponse>(
-      `/api/files/videos`,
-      formData,
-      { headers: { "Content-Type": "multipart/form-data" } },
-    );
-
-    return res.data;
-  } catch (err) {
-    const axiosErr = err as AxiosError<{ message?: string }>;
-    return Promise.reject(axiosErr.response?.data || { message: "Upload failed" });
-  }
-};
-
 export const deleteVideo = async (id: string): Promise<void> => {
   await clientApi.delete(`/api/files/videos/${id}`);
 };
@@ -240,7 +206,6 @@ export default {
   getVideos,
   getVideo,
   getStreamUrl,
-  uploadVideo,
   updateVideoPrivacy,
   deleteVideo,
   downloadVideo,

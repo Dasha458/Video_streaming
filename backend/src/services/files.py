@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 from uuid import NAMESPACE_DNS, UUID, uuid4, uuid5
 
-import xxhash
 from aio_pika.exceptions import AMQPException
 from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import UploadFile
@@ -46,21 +45,6 @@ if TYPE_CHECKING:
     from faststream.rabbit import RabbitBroker
 
     from src.infrastructure.s3_client import S3Client
-
-
-async def _hash_and_size(uploaded_file: UploadFile) -> tuple[str, int]:
-    hasher = xxhash.xxh3_128()
-    block_size = 1024 * 1024
-
-    await uploaded_file.seek(0)
-    size = 0
-
-    # hash + size in one pass
-    while chunk := await uploaded_file.read(block_size):
-        hasher.update(chunk)
-        size += len(chunk)
-    await uploaded_file.seek(0)
-    return hasher.hexdigest(), size
 
 
 class FileService:
@@ -108,12 +92,6 @@ class FileService:
             .values(thumbnail_path=f"/minio/video-thumbnails/{thumb_name}")
         )
         await self.session.commit()
-
-    async def _upload_video_file(self, video_id: UUID, video: UploadFile) -> str:
-        video_suffix = Path(video.filename or "").suffix
-        new_filename = f"{video_id}{video_suffix}"
-        await self.s3_client.upload_file(new_filename, video.file, bucket_name="videos")
-        return new_filename
 
     async def _check_video_size(self, size: int) -> None:
         if size <= 0:
@@ -220,39 +198,37 @@ class FileService:
         await self.session.execute(delete(Video).where(Video.id == existing.id))
         await self.session.commit()
 
-    async def upload_video(
+    async def register_uploaded_video(
         self,
         *,
-        video: UploadFile,
-        thumbnail: UploadFile | None,
+        video_id: UUID,
+        object_key: str,
+        video_hash: str,
+        size: int,
         name: str,
         description: str,
         privacy: str,
         category: str,
         user_id: UUID,
+        thumbnail: UploadFile | None,
     ) -> FileResponse:
+        """Create the video for a file that is already in storage.
 
-        if not (video.content_type or "").startswith("video/"):
-            raise InvalidVideoFormatError()
-
+        This used to be the tail of a single-shot upload that committed
+        the row *before* sending the bytes -- so a storage failure left a
+        row stuck in "queued" that its owner could not delete and whose
+        hash blocked them from re-uploading their own file. The bytes
+        arrive first now, in parts, and nothing exists in the database
+        until they are all there.
+        """
         if thumbnail and not (thumbnail.content_type or "").startswith("image/"):
             raise InvalidThumbnailFormatError()
-
-        video_hash, video_size = await _hash_and_size(video)
-        await self._check_video_size(video_size)
-        video_id = uuid.uuid4()
 
         channel_id = await self._get_channel_id(user_id)
 
         inserted = await self._insert_video(
-            video_id,
-            name,
-            description,
-            channel_id,
-            video_size,
-            video_hash,
-            privacy,
-            category,
+            video_id, name, description, channel_id,
+            size, video_hash, privacy, category,
         )
 
         if not inserted:
@@ -272,7 +248,7 @@ class FileService:
                 await self._reclaim(existing)
                 inserted = await self._insert_video(
                     video_id, name, description, channel_id,
-                    video_size, video_hash, privacy, category,
+                    size, video_hash, privacy, category,
                 )
                 if not inserted:
                     raise DuplicateVideoError()
@@ -286,21 +262,21 @@ class FileService:
         if thumbnail:
             await self._upload_thumbnail(video_id, thumbnail)
 
-        filename = await self._upload_video_file(video_id, video)
-
         try:
             if self.broker is None:
                 raise RuntimeError("Broker is not configured")
 
             await self.broker.publish(
-                filename,
+                object_key,
                 queue="video.encode",
                 priority=10,
             )
         except (RuntimeError, AMQPException, OSError) as e:
-            # Compensate: a video row with no encode job would sit in "queued"
-            # forever, so the upload is rolled back whatever the cause.
-            logging.error(f"Upload pipeline failed for {video_id}: {e}")
+            # Compensate: a video row with no encode job would sit in
+            # "queued" for ever, so the row is rolled back whatever the
+            # cause. The stored object is the caller's to clean up -- it
+            # is the one that put it there.
+            logging.error(f"Could not queue encoding for {video_id}: {e}")
 
             await self.session.execute(delete(Video).where(Video.id == video_id))
             await self.session.commit()
@@ -308,13 +284,7 @@ class FileService:
 
         return FileResponse(
             status="accepted",
-            files=[
-                FileMeta(
-                    file_id=video_id,
-                    filename=name,
-                    size=video_size,
-                )
-            ],
+            files=[FileMeta(file_id=video_id, filename=name, size=size)],
         )
 
     #: Written by the converter beside the playlists, once, at encode time.

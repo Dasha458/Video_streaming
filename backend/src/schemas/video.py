@@ -168,7 +168,12 @@ class VideoPage(BaseModel):
 
 
 class VideoUploadParams(BaseModel):
-    video: Annotated[UploadFile, File(description="A video file to upload")]
+    """What accompanies a finished upload.
+
+    The video file itself is gone from here: it arrives in parts, before
+    any of this is known. See src/services/uploads.py.
+    """
+
     # Optional in the UI (only Title is marked required), so optional here:
     # without the `= None` default Pydantic treats Optional[...] as required
     # and every upload without a thumbnail was rejected.

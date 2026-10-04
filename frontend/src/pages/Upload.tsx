@@ -4,7 +4,7 @@ import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
 import {Upload, X, ImagePlus, Film, CheckCircle2, Lock, Globe} from "lucide-react";
-import api from "@api/videoApi";
+import { uploadInParts, findResumableUpload } from "@api/uploadApi";
 import categoriesApi from "@api/categoriesApi";
 import {useToast} from "@/components/ui/toast/use-toast";
 import type {Category} from "@api/types";
@@ -25,6 +25,10 @@ export default function UploadPage() {
     const [dragging, setDragging] = useState(false);
     const [loading, setLoading] = useState(false);
     const [done, setDone] = useState(false);
+    const [progress, setProgress] = useState(0);
+    //: An upload of this same file was interrupted earlier and is being
+    //: carried on rather than restarted.
+    const [resumedNotice, setResumedNotice] = useState(false);
 
     const videoInputRef = useRef<HTMLInputElement>(null);
     const thumbInputRef = useRef<HTMLInputElement>(null);
@@ -44,6 +48,10 @@ export default function UploadPage() {
         setVideoFile(file);
         setTitle((prev) => prev || file.name.replace(/\.[^.]+$/, ""));
         setDone(false);
+        setProgress(0);
+        // Told before anything is sent, so choosing the file again after
+        // a browser crash does not look like starting from nothing.
+        setResumedNotice(Boolean(findResumableUpload(file)));
     }, []);
 
     const onDrop = useCallback(
@@ -87,18 +95,36 @@ export default function UploadPage() {
             return;
         }
         setLoading(true);
+        setProgress(0);
         try {
-            await api.uploadVideo(videoFile, {
-                title: title || videoFile.name,
-                description,
-                thumbnail: thumbnailFile ?? undefined,
-                isPublic: privacy === "public",
-                category,
-            });
+            // In parts, and resuming whatever the server already holds:
+            // one request for a 500 MB file meant any dropped connection
+            // started the whole thing again.
+            await uploadInParts(
+                videoFile,
+                {
+                    title: title || videoFile.name,
+                    description,
+                    privacy,
+                    category,
+                    thumbnail: thumbnailFile ?? undefined,
+                },
+                ({ratio, resumed}) => {
+                    setProgress(ratio);
+                    if (resumed) setResumedNotice(true);
+                },
+            );
             setDone(true);
             toast({title: "Upload complete", description: "Your video has been submitted for processing."});
         } catch (err) {
-            toast({title: "Upload failed", description: getApiErrorMessage(err, "Upload failed"), variant: "destructive"});
+            toast({
+                title: "Upload failed",
+                description: getApiErrorMessage(
+                    err,
+                    "Upload failed. Choosing the same file again will carry on from where it stopped.",
+                ),
+                variant: "destructive",
+            });
         } finally {
             setLoading(false);
         }
@@ -185,11 +211,41 @@ export default function UploadPage() {
                         Uploaded
                     </div>
                 ) : (
-                    <Button onClick={handleUpload} disabled={loading} className="rounded-full px-6">
-                        {loading ? "Uploading…" : "UPLOAD"}
-                    </Button>
+                    <div className="flex items-center gap-3">
+                        {loading && (
+                            // By bytes, not by part: the last part is
+                            // shorter, and a bar that jumps in tenths tells
+                            // nobody whether a long upload is moving.
+                            <div className="flex items-center gap-2">
+                                <div className="h-1.5 w-32 rounded-full bg-muted overflow-hidden">
+                                    <div
+                                        className="h-full bg-primary transition-[width] duration-200"
+                                        style={{width: `${Math.round(progress * 100)}%`}}
+                                        role="progressbar"
+                                        aria-label="Upload progress"
+                                        aria-valuenow={Math.round(progress * 100)}
+                                        aria-valuemin={0}
+                                        aria-valuemax={100}
+                                    />
+                                </div>
+                                <span className="text-xs text-muted-foreground tabular-nums">
+                                    {Math.round(progress * 100)}%
+                                </span>
+                            </div>
+                        )}
+                        <Button onClick={handleUpload} disabled={loading} className="rounded-full px-6">
+                            {loading ? "Uploading…" : "UPLOAD"}
+                        </Button>
+                    </div>
                 )}
             </div>
+
+            {resumedNotice && !done && (
+                <div className="px-6 pb-2 text-xs text-muted-foreground">
+                    Carrying on from where this file stopped last time — the
+                    parts already sent are not sent again.
+                </div>
+            )}
 
             {/* Body */}
             <div className="flex flex-1 gap-8 px-6 py-6 w-full">
