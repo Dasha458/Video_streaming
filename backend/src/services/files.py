@@ -1,5 +1,6 @@
 import logging
 import uuid
+from datetime import datetime, timedelta, timezone
 from collections.abc import AsyncGenerator
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
@@ -15,11 +16,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.status_ids import (
     STATUS_FAILED_ID,
+    STATUS_PROCESSING_ID,
     STATUS_QUEUED_ID,
     STATUS_READY_ID,
     privacy_id_for,
 )
 from src.errors.files import (
+    AlreadyUploadedError,
     ChannelNotFoundError,
     DuplicateVideoError,
     EmptyFileError,
@@ -153,6 +156,69 @@ class FileService:
         await self.session.commit()
         return inserted_id
 
+    #: How long a video may sit in "queued" before its hash is treated as
+    #: abandoned. The encoder picks a job up in seconds; a row still queued
+    #: after this never got one -- the storage upload or the publish died
+    #: after the row was committed. Long enough that a genuine concurrent
+    #: upload of the same file is never mistaken for wreckage.
+    STALE_QUEUE_GRACE = timedelta(minutes=15)
+
+    async def _video_with_hash(self, video_hash: str) -> Video | None:
+        """The existing row that owns this hash, with its channel loaded."""
+        result = await self.session.execute(
+            select(Video, Channel.user_id)
+            .join(Channel, Channel.id == Video.channel_id)
+            .where(Video.hash == video_hash)
+        )
+        row = result.first()
+        if row is None:
+            return None
+        video, owner_id = row
+        # Carried alongside rather than looked up again by the caller.
+        video.__dict__["_owner_id"] = owner_id
+        return video
+
+    def _is_abandoned(self, existing: Video) -> bool:
+        """Is this row wreckage holding a hash nobody can use?
+
+        A failed encode is finished and will not change on its own. A row
+        still queued past the grace period never reached the encoder at
+        all: `_insert_video` commits before the file is uploaded, so a
+        storage failure leaves exactly this -- a row the owner cannot
+        delete and a hash that blocks them re-uploading their own file
+        for good.
+        """
+        if existing.status_id == STATUS_FAILED_ID:
+            return True
+        if existing.status_id != STATUS_QUEUED_ID:
+            return False
+        created = existing.created_at
+        if created is None:
+            return True
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) - created > self.STALE_QUEUE_GRACE
+
+    async def _reclaim(self, existing: Video) -> None:
+        """Delete the dead row and anything it left in storage."""
+        logging.info(
+            "Reclaiming an abandoned video row so its hash can be reused",
+            extra={"video_id": str(existing.id)},
+        )
+        try:
+            await self.s3_client.delete_prefix(
+                f"{existing.id}/", bucket_name="videos"
+            )
+            await self._delete_original_upload(existing)
+        except (BotoCoreError, ClientError, S3DeletionError) as e:
+            # The row is the thing blocking the re-upload; leftover bytes
+            # are the orphan sweeper's problem, not this request's.
+            logging.warning(
+                f"Could not clear storage for reclaimed video {existing.id}: {e}"
+            )
+        await self.session.execute(delete(Video).where(Video.id == existing.id))
+        await self.session.commit()
+
     async def upload_video(
         self,
         *,
@@ -189,7 +255,32 @@ class FileService:
         )
 
         if not inserted:
-            raise DuplicateVideoError()
+            # One file, one video on the platform -- the rule, not an
+            # accident of the unique index. What differs is who is told
+            # what, and whether the hash is really still in use.
+            existing = await self._video_with_hash(video_hash)
+            if existing is None:
+                # Removed between the insert and this lookup; the file is
+                # free again, so let the caller try once more rather than
+                # refuse something that is no longer true.
+                raise DuplicateVideoError()
+
+            own = existing.__dict__.get("_owner_id") == user_id
+
+            if own and self._is_abandoned(existing):
+                await self._reclaim(existing)
+                inserted = await self._insert_video(
+                    video_id, name, description, channel_id,
+                    video_size, video_hash, privacy, category,
+                )
+                if not inserted:
+                    raise DuplicateVideoError()
+            elif own:
+                raise AlreadyUploadedError()
+            else:
+                # Nothing about the other video is revealed -- not its id,
+                # not its channel, not whether it is public.
+                raise DuplicateVideoError()
 
         if thumbnail:
             await self._upload_thumbnail(video_id, thumbnail)
