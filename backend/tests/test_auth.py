@@ -1,5 +1,6 @@
 """Tests for /api/auth/* endpoints."""
 
+import uuid
 from unittest.mock import AsyncMock, MagicMock
 from urllib.parse import parse_qs, urlparse
 
@@ -610,3 +611,78 @@ class TestChangePasswordGoesThroughThePolicy:
             await service.change_password(user, "current", "a")
 
         manager.password_helper.hash.assert_not_called()
+
+
+class TestSessionsEndWhenThePasswordChanges:
+    """Tokens were stateless and tied to nothing.
+
+    Changing the password left every session issued before it valid for
+    the rest of the hour, on every device -- including whoever's access
+    prompted the change. People change their password precisely because
+    somebody else may have it.
+    """
+
+    @staticmethod
+    def _user(hashed: str):
+
+
+        user = MagicMock()
+        user.id = uuid.UUID("11111111-1111-1111-1111-111111111111")
+        user.hashed_password = hashed
+        return user
+
+    @staticmethod
+    def _manager(user):
+        manager = AsyncMock()
+        manager.parse_id = lambda value: uuid.UUID(value)
+        manager.get = AsyncMock(return_value=user)
+        return manager
+
+    @pytest.mark.asyncio
+    async def test_a_token_still_works_while_the_password_is_unchanged(self):
+        from src.infrastructure.auth import get_jwt_strategy
+
+        strategy = get_jwt_strategy()
+        user = self._user("hash-one")
+        token = await strategy.write_token(user)
+
+        assert await strategy.read_token(token, self._manager(user)) is user
+
+    @pytest.mark.asyncio
+    async def test_the_same_token_stops_working_once_it_changes(self):
+        from src.infrastructure.auth import get_jwt_strategy
+
+        strategy = get_jwt_strategy()
+        token = await strategy.write_token(self._user("hash-one"))
+
+        # The stored hash is now a different one -- the password changed.
+        changed = self._user("hash-two")
+
+        assert await strategy.read_token(token, self._manager(changed)) is None
+
+    @pytest.mark.asyncio
+    async def test_a_token_from_before_this_existed_is_refused(self):
+        """It carries no binding, so nothing says it survived a change."""
+        from fastapi_users.jwt import generate_jwt
+
+        from src.infrastructure.auth import TOKEN_LIFETIME_SECONDS, get_jwt_strategy
+
+        strategy = get_jwt_strategy()
+        user = self._user("hash-one")
+        legacy = generate_jwt(
+            {"sub": str(user.id), "aud": strategy.token_audience},
+            strategy.encode_key,
+            TOKEN_LIFETIME_SECONDS,
+            algorithm=strategy.algorithm,
+        )
+
+        assert await strategy.read_token(legacy, self._manager(user)) is None
+
+    @pytest.mark.asyncio
+    async def test_the_fingerprint_says_nothing_about_the_password(self):
+        from src.infrastructure.auth import password_fingerprint
+
+        marked = password_fingerprint("$2b$12$averyrealbcrypthash")
+
+        assert "$2b$" not in marked
+        assert len(marked) == 16

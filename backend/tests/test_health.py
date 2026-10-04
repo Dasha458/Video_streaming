@@ -1,6 +1,8 @@
 """Tests for GET /api/health/live and GET /api/health/ready."""
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 
 class TestLivenessEndpoint:
@@ -87,3 +89,63 @@ class TestReadinessEndpoint:
                 app.dependency_overrides[get_s3_client] = original
             else:
                 app.dependency_overrides.pop(get_s3_client, None)
+
+
+class TestTheBrokerCheckObserves:
+    """It used to call connect() when it found the broker disconnected.
+
+    A readiness probe that changes the application's state is the wrong
+    shape, and against a broker that was genuinely down it hammered
+    connect() on every probe for the length of the outage. The second
+    guard then defaulted to True, so a broker that reported nothing
+    always passed -- a check that could not fail.
+    """
+
+    @staticmethod
+    async def _check(broker):
+        from src.services.health import HealthService
+
+        service = HealthService(
+            session=AsyncMock(), s3_client=AsyncMock(), broker=broker
+        )
+        await service._check_message_broker()
+        return service
+
+    @pytest.mark.asyncio
+    async def test_a_broker_that_answers_passes(self):
+        broker = MagicMock()
+        broker.ping = AsyncMock(return_value=True)
+
+        service = await self._check(broker)
+
+        assert service.checks["message_broker"] == "ok"
+
+    @pytest.mark.asyncio
+    async def test_a_silent_broker_is_reported_not_reconnected(self):
+        broker = MagicMock()
+        broker.ping = AsyncMock(return_value=False)
+        broker.connect = MagicMock()
+
+        service = await self._check(broker)
+
+        assert service.checks["message_broker"] != "ok"
+        broker.connect.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_the_probe_does_not_wait_on_a_slow_broker(self):
+        """A readiness probe runs every few seconds; an unbounded wait
+        here turns a slow broker into a slow probe."""
+        broker = MagicMock()
+        broker.ping = AsyncMock(return_value=True)
+
+        await self._check(broker)
+
+        assert broker.ping.await_args.kwargs["timeout"] <= 5
+
+    @pytest.mark.asyncio
+    async def test_a_broker_with_nothing_to_ask_is_not_called_healthy(self):
+        broker = MagicMock(spec=[])  # no ping, no is_connected
+
+        service = await self._check(broker)
+
+        assert service.checks["message_broker"] == "unknown"

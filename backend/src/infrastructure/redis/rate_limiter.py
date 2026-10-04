@@ -1,9 +1,11 @@
+import logging
 import random
 import time
 from typing import Any, Awaitable, Optional, cast
 
 from cachetools import TTLCache
 from redis.asyncio import Redis
+from redis.exceptions import NoScriptError
 
 
 class RateLimiter:
@@ -18,14 +20,21 @@ class RateLimiter:
     return 0
     """
 
+    #: Longest window any caller uses, and so the longest a local block
+    #: may be remembered. The cache is shared by every endpoint, so one
+    #: TTL has to cover them all; it used to be a flat 60 seconds with a
+    #: comment claiming it followed window_seconds, which meant a
+    #: ten-second window blocked an address for a minute.
+    MAX_BLOCK_TTL = 300
+
     def __init__(self, redis: Redis):
         self._redis = redis
         self._lua_sha: Optional[str] = None
-        # Stores up to 10,000 blocked IPs.
-        # Items expire automatically based on the 'window_seconds'
+        # Up to 10,000 blocked addresses, each remembered only as long as
+        # the window it was blocked for -- see _remember_block.
         self._local_block_cache: TTLCache = TTLCache(
             maxsize=10_000,
-            ttl=60,
+            ttl=self.MAX_BLOCK_TTL,
         )
 
     async def _get_script_sha(self) -> str:
@@ -47,32 +56,55 @@ class RateLimiter:
     ) -> bool:
         cache_key = f"{endpoint}:{ip_address}"
 
-        if self._local_block_cache.get(cache_key):
-            # We already know ip is blocked, so no need to talk to Redis.
-            return True
+        blocked_until = self._local_block_cache.get(cache_key)
+        if blocked_until is not None:
+            if time.monotonic() < blocked_until:
+                # Already known to be blocked; no need to talk to Redis.
+                return True
+            # The window has passed even though the cache entry has not.
+            self._local_block_cache.pop(cache_key, None)
 
-        sha = await self._get_script_sha()
         current_ms = int(time.time() * 1000)
         window_start_ms = current_ms - (window_seconds * 1000)
         member_id = f"{current_ms}-{random.randint(0, 100000)}"
-
-        is_blocked_in_redis = await cast(
-            Awaitable[Any],
-            self._redis.evalsha(
-                sha,
-                1,
-                f"rate_limit:{cache_key}",  # Redis Key
-                current_ms,
-                window_start_ms,
-                max_requests,
-                window_seconds,
-                member_id,
-            ),
+        args = (
+            f"rate_limit:{cache_key}",  # Redis Key
+            current_ms,
+            window_start_ms,
+            max_requests,
+            window_seconds,
+            member_id,
         )
 
-        if is_blocked_in_redis == 1:
-            self._local_block_cache[cache_key] = True
+        try:
+            is_blocked_in_redis = await self._run(args)
+        except NoScriptError:
+            # Redis forgets loaded scripts when it restarts, and the sha
+            # was cached for the life of the process -- so every rate
+            # limited endpoint answered 500 from the moment Redis came
+            # back until the application was restarted. Loading it again
+            # is the documented response to NOSCRIPT.
+            logging.info("Rate limit script was dropped by Redis; reloading it")
+            self._lua_sha = None
+            is_blocked_in_redis = await self._run(args)
 
+        if is_blocked_in_redis == 1:
+            self._remember_block(cache_key, window_seconds)
             return True
 
         return False
+
+    async def _run(self, args: tuple) -> Any:
+        sha = await self._get_script_sha()
+        return await cast(Awaitable[Any], self._redis.evalsha(sha, 1, *args))
+
+    def _remember_block(self, cache_key: str, window_seconds: int) -> None:
+        """Keep the block locally for as long as it can actually last.
+
+        A shared TTLCache has one expiry, so a per-entry deadline is kept
+        alongside the entry and checked on read. Without it a block from
+        a ten-second window was still being served from memory nearly a
+        minute later, long after Redis would have let the caller through.
+        """
+        deadline = time.monotonic() + min(window_seconds, self.MAX_BLOCK_TTL)
+        self._local_block_cache[cache_key] = deadline

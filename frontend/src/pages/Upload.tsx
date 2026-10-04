@@ -1,4 +1,4 @@
-import React, {useCallback, useRef, useState, useEffect} from "react";
+import React, {useCallback, useMemo, useRef, useState, useEffect} from "react";
 import CreateChannelGate from "@/components/CreateChannelGate";
 import {Button} from "@/components/ui/button";
 import {Input} from "@/components/ui/input";
@@ -74,13 +74,45 @@ export default function UploadPage() {
         const file = e.target.files?.[0];
         if (!file) return;
         setThumbnailFile(file);
-        setThumbnailPreview(URL.createObjectURL(file));
+        // The previous one is released first: each createObjectURL pins
+        // its blob in memory until revoked, and nothing revoked these.
+        setThumbnailPreview((previous) => {
+            if (previous) URL.revokeObjectURL(previous);
+            return URL.createObjectURL(file);
+        });
     };
+
+    // A blob URL for the chosen video, made once per file.
+    //
+    // This used to be called inline in the markup, so React created a
+    // fresh URL on every render -- and every one of them pinned the whole
+    // file in memory. On a 500 MB upload, typing in the title field was
+    // enough to do it repeatedly.
+    const videoPreviewUrl = useMemo(
+        () => (videoFile ? URL.createObjectURL(videoFile) : null),
+        [videoFile],
+    );
+
+    useEffect(() => {
+        if (!videoPreviewUrl) return;
+        return () => URL.revokeObjectURL(videoPreviewUrl);
+    }, [videoPreviewUrl]);
+
+    // Releases the thumbnail preview when the page is left; the handler
+    // above covers replacing one while still here.
+    useEffect(() => {
+        return () => {
+            if (thumbnailPreview) URL.revokeObjectURL(thumbnailPreview);
+        };
+    }, [thumbnailPreview]);
 
     const reset = () => {
         setVideoFile(null);
         setThumbnailFile(null);
-        setThumbnailPreview(null);
+        setThumbnailPreview((previous) => {
+            if (previous) URL.revokeObjectURL(previous);
+            return null;
+        });
         setTitle("");
         setDescription("");
         setPrivacy("public");
@@ -367,7 +399,7 @@ export default function UploadPage() {
                     <div
                         className="rounded-xl overflow-hidden border border-border bg-black aspect-video flex items-center justify-center">
                         <video
-                            src={URL.createObjectURL(videoFile)}
+                            src={videoPreviewUrl ?? undefined}
                             controls
                             className="w-full h-full object-contain"
                         />

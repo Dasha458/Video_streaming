@@ -1,5 +1,4 @@
 import asyncio
-import inspect
 from typing import TYPE_CHECKING, Dict, Optional
 
 from fastapi import status
@@ -51,21 +50,38 @@ class HealthService:
             self.checks["object_storage"] = err.code
             self._statuses.append(err.status_code)
 
+    #: A readiness probe runs every few seconds; waiting longer than this
+    #: for an answer turns a slow broker into a slow probe.
+    BROKER_PING_TIMEOUT = 2.0
+
     async def _check_message_broker(self) -> None:
         if self.broker is None:
             self.checks["message_broker"] = "skipped"
             return
 
         try:
-            is_connected = getattr(self.broker, "is_connected", False)
+            # Reported, not repaired. This used to call connect() when it
+            # found the broker disconnected, so a readiness probe changed
+            # the state of the application -- and against a broker that
+            # was actually down it hammered connect() on every probe,
+            # several times a minute, for as long as the outage lasted.
+            # Reconnecting is the broker client's own job; saying so is
+            # this function's.
+            ping = getattr(self.broker, "ping", None)
+            if ping is None:
+                # Nothing to ask. "unknown" is the honest answer; the
+                # old default here was True, which made this a check
+                # that could not fail.
+                self.checks["message_broker"] = "unknown"
+                return
 
-            if not is_connected:
-                connect_result = self.broker.connect()
-                if inspect.isawaitable(connect_result):
-                    await connect_result
-
-            if not getattr(self.broker, "is_connected", True):
-                raise RuntimeError("Message broker not connected")
+            # The client's own liveness call, which neither opens nor
+            # closes anything. It also replaces the `is_connected`
+            # attribute this used to read -- FastStream's RabbitBroker
+            # does not have one, so the check was answering from a
+            # default and passing while the broker was down.
+            if not await ping(timeout=self.BROKER_PING_TIMEOUT):
+                raise RuntimeError("Message broker did not answer")
 
             self.checks["message_broker"] = "ok"
         except Exception as ex:
