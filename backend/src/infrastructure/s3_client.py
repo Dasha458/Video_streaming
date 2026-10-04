@@ -160,9 +160,7 @@ class S3Client:
         """Start an upload and return the id the parts belong to."""
         self._check_bucket(bucket_name)
         async with self._get_client() as client:
-            response = await client.create_multipart_upload(
-                Bucket=bucket_name, Key=key
-            )
+            response = await client.create_multipart_upload(Bucket=bucket_name, Key=key)
             return str(response["UploadId"])
 
     async def upload_part(
@@ -224,9 +222,7 @@ class S3Client:
                 },
             )
 
-    async def abort_multipart(
-        self, key: str, bucket_name: str, upload_id: str
-    ) -> None:
+    async def abort_multipart(self, key: str, bucket_name: str, upload_id: str) -> None:
         """Discard an unfinished upload.
 
         Worth doing explicitly: an abandoned multipart upload holds the
@@ -262,6 +258,35 @@ class S3Client:
                 async for chunk in stream.content.iter_chunked(chunk_size):
                     if chunk:
                         yield chunk
+
+    async def delete_all_versions(self, key: str, bucket_name: str) -> int:
+        """Remove an object and every version of it.
+
+        Versioning is on for these buckets, so an ordinary delete only
+        writes a delete marker: the object disappears from listings while
+        its bytes stay as a noncurrent version. That is fine for a video
+        somebody deleted -- the orphan sweeper collects those -- but a
+        failed upload happens on an ordinary code path, several times a
+        day, and each one would quietly keep a copy of the file.
+        """
+        self._check_bucket(bucket_name)
+        removed = 0
+        async with self._get_client() as client:
+            paginator = client.get_paginator("list_object_versions")
+            async for page in paginator.paginate(Bucket=bucket_name, Prefix=key):
+                targets = [
+                    {"Key": obj["Key"], "VersionId": obj["VersionId"]}
+                    for kind in ("Versions", "DeleteMarkers")
+                    for obj in page.get(kind, [])
+                    # Prefix matching would also catch <key>-something.
+                    if obj["Key"] == key
+                ]
+                if targets:
+                    await client.delete_objects(
+                        Bucket=bucket_name, Delete={"Objects": targets}
+                    )
+                    removed += len(targets)
+        return removed
 
     def _check_bucket(self, bucket_name: str) -> None:
         if not bucket_name:

@@ -46,7 +46,9 @@ router_files = APIRouter(
 @router_files.post(
     "/uploads",
     response_model=UploadStarted,
-    dependencies=[Depends(limit_requests("uploads", max_requests=10, window_seconds=60))],
+    dependencies=[
+        Depends(limit_requests("uploads", max_requests=10, window_seconds=60))
+    ],
     summary="Start a resumable upload",
     description=(
         "Opens an upload and returns the id its parts belong to, together "
@@ -137,9 +139,15 @@ async def upload_status(
         "creates the video and queues encoding."
     ),
     responses={
-        400: {"model": ErrorResponse, "description": "Nothing arrived, or the wrong size."},
+        400: {
+            "model": ErrorResponse,
+            "description": "Nothing arrived, or the wrong size.",
+        },
         404: {"model": ErrorResponse, "description": "No such upload."},
-        409: {"model": ErrorResponse, "description": "This file is already on the platform."},
+        409: {
+            "model": ErrorResponse,
+            "description": "This file is already on the platform.",
+        },
     },
 )
 async def complete_upload(

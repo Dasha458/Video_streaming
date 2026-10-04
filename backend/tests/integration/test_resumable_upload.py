@@ -13,7 +13,6 @@ parts arrived, are both checked against the real thing.
 
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
-from uuid import uuid4
 
 import pytest
 from sqlalchemy import select, update
@@ -43,6 +42,7 @@ def _s3(stored: bytes = b"", parts=None):
     s3.complete_multipart = AsyncMock()
     s3.abort_multipart = AsyncMock()
     s3.delete_file = AsyncMock()
+    s3.delete_all_versions = AsyncMock(return_value=1)
 
     async def _iter(key, bucket, chunk_size=1024 * 1024):
         yield stored
@@ -237,13 +237,14 @@ class TestCompleting:
                 thumbnail=None,
             )
 
-        s3.delete_file.assert_awaited_once()
+        # Every version: the bucket is versioned, so an ordinary delete
+        # would leave the file behind as a noncurrent version and a
+        # refused upload is an ordinary thing.
+        s3.delete_all_versions.assert_awaited_once()
         assert await _session_row(session, started.upload_id) is None
 
     @pytest.mark.asyncio
-    async def test_completing_with_nothing_sent_is_refused(
-        self, session: AsyncSession
-    ):
+    async def test_completing_with_nothing_sent_is_refused(self, session: AsyncSession):
         s3 = _s3(parts=[])
         user, service, started = await _started(session, s3)
 
@@ -259,9 +260,7 @@ class TestCompleting:
             )
 
     @pytest.mark.asyncio
-    async def test_the_session_does_not_outlive_the_upload(
-        self, session: AsyncSession
-    ):
+    async def test_the_session_does_not_outlive_the_upload(self, session: AsyncSession):
         content = b"x" * 120
         s3 = _s3(stored=content, parts=[_part(1)])
         user, service, started = await _started(session, s3, size=len(content))

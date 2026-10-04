@@ -1,11 +1,11 @@
 """Tests for /api/files/* endpoints."""
 
-import io
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
 FAKE_VIDEO_ID = uuid.UUID("cccccccc-cccc-cccc-cccc-cccccccccccc")
 FAKE_UPLOAD_ID = uuid.UUID("dddddddd-dddd-dddd-dddd-dddddddddddd")
+
 
 class TestResumableUpload:
     """/api/files/uploads/* -- the video arrives in parts.

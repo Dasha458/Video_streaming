@@ -1,6 +1,6 @@
 import uuid as _uuid
 from typing import TYPE_CHECKING, Any, List, Tuple, cast, get_args
-from uuid import NAMESPACE_DNS, UUID, uuid5
+from uuid import UUID
 
 from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -8,7 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.core.pagination import paginate_query
-from src.core.status_ids import PRIVACY_PUBLIC_ID, STATUS_READY_ID
+from src.core.status_ids import (
+    PRIVACY_PUBLIC_ID,
+    STATUS_READY_ID,
+    category_id_for,
+)
 from src.errors.videos import (
     InvalidPrivacyError,
     VideoNotFoundError,
@@ -80,7 +84,7 @@ class VideoService:
         ]
 
         if category:
-            category_id = uuid5(NAMESPACE_DNS, f"video_category:{category.lower()}")
+            category_id = category_id_for(category)
             filters.append(Video.category_id == category_id)
 
         if channel_name:

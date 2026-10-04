@@ -1,28 +1,29 @@
 import logging
 import re
-import uuid
-from datetime import datetime, timedelta, timezone
 from collections.abc import AsyncGenerator
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
-from uuid import NAMESPACE_DNS, UUID, uuid4, uuid5
+from uuid import UUID, uuid4
 
 from aio_pika.exceptions import AMQPException
 from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import UploadFile
 from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.status_ids import (
     STATUS_FAILED_ID,
-    STATUS_PROCESSING_ID,
     STATUS_QUEUED_ID,
     STATUS_READY_ID,
+    category_id_for,
     privacy_id_for,
 )
 from src.errors.files import (
     AlreadyUploadedError,
+    ChannelNameUnavailableError,
     ChannelNotFoundError,
     DownloadNotReadyError,
     DownloadUnavailableError,
@@ -30,7 +31,6 @@ from src.errors.files import (
     EmptyFileError,
     FileTooLargeError,
     InvalidThumbnailFormatError,
-    InvalidVideoFormatError,
     JobPublishFailedError,
     S3DeletionError,
     S3DownloadError,
@@ -59,25 +59,67 @@ class FileService:
         self.broker = broker
         self.MAX_VIDEO_BYTES = 500_000_000  # 500MB
 
+    #: How many times to try a suffixed name before giving up. Each
+    #: attempt is a round trip, and anyone whose username collides this
+    #: many times is better served by picking a channel name themselves.
+    CHANNEL_NAME_ATTEMPTS = 20
+
     async def _get_channel_id(self, user_id: UUID) -> UUID:
+        """The uploader's channel, created on first upload if they have none.
+
+        Channel.name is unique across the platform, and the name taken
+        here is the username -- so a user whose name somebody else had
+        already used as a channel name hit an IntegrityError and a 500,
+        on their first upload, with nothing explaining why. The two names
+        are separate things and nothing stops them colliding.
+        """
         result = await self.session.execute(
             select(Channel.id).where(Channel.user_id == user_id)
         )
         channel_id = result.scalar_one_or_none()
+        if channel_id:
+            return channel_id
 
-        if not channel_id:
-            user_result = await self.session.execute(
-                select(User.username).where(User.id == user_id)  # type: ignore[arg-type]
-            )
-            username = user_result.scalar_one_or_none()
-            if not username:
-                raise ChannelNotFoundError()
-            channel = Channel(user_id=user_id, name=username)
-            self.session.add(channel)
-            await self.session.flush()
-            channel_id = channel.id
+        user_result = await self.session.execute(
+            select(User.username).where(User.id == user_id)  # type: ignore[arg-type]
+        )
+        username = user_result.scalar_one_or_none()
+        if not username:
+            raise ChannelNotFoundError()
 
-        return channel_id
+        return await self._create_channel(user_id, str(username))
+
+    async def _create_channel(self, user_id: UUID, username: str) -> UUID:
+        """Create the channel, working around a name already in use.
+
+        A savepoint per attempt: an IntegrityError poisons the
+        transaction, and without one the first collision would take the
+        whole upload down with it -- including the video row the caller
+        is about to write.
+        """
+        for attempt in range(self.CHANNEL_NAME_ATTEMPTS):
+            name = username if attempt == 0 else f"{username}-{attempt + 1}"
+            try:
+                async with self.session.begin_nested():
+                    channel = Channel(user_id=user_id, name=name)
+                    self.session.add(channel)
+                    await self.session.flush()
+                if attempt:
+                    logging.info(
+                        "Channel name %r was taken; used %r instead", username, name
+                    )
+                return channel.id
+            except IntegrityError:
+                # Either the name is taken, or another request created
+                # this user's channel a moment ago. Both are ordinary.
+                existing = await self.session.execute(
+                    select(Channel.id).where(Channel.user_id == user_id)
+                )
+                mine = existing.scalar_one_or_none()
+                if mine:
+                    return mine
+
+        raise ChannelNameUnavailableError()
 
     async def _upload_thumbnail(self, video_id: UUID, thumbnail: UploadFile) -> None:
         thumb_suffix = Path(thumbnail.filename or "").suffix
@@ -125,7 +167,7 @@ class FileService:
                 video_path=None,
                 thumbnail_path=None,
                 privacy_id=privacy_id_for(privacy),
-                category_id=uuid5(NAMESPACE_DNS, f"video_category:{category.lower()}"),
+                category_id=category_id_for(category),
                 status_id=STATUS_QUEUED_ID,
             )
             .on_conflict_do_nothing(index_elements=["hash"])
@@ -185,9 +227,7 @@ class FileService:
             extra={"video_id": str(existing.id)},
         )
         try:
-            await self.s3_client.delete_prefix(
-                f"{existing.id}/", bucket_name="videos"
-            )
+            await self.s3_client.delete_prefix(f"{existing.id}/", bucket_name="videos")
             await self._delete_original_upload(existing)
         except (BotoCoreError, ClientError, S3DeletionError) as e:
             # The row is the thing blocking the re-upload; leftover bytes
@@ -227,8 +267,14 @@ class FileService:
         channel_id = await self._get_channel_id(user_id)
 
         inserted = await self._insert_video(
-            video_id, name, description, channel_id,
-            size, video_hash, privacy, category,
+            video_id,
+            name,
+            description,
+            channel_id,
+            size,
+            video_hash,
+            privacy,
+            category,
         )
 
         if not inserted:
@@ -247,8 +293,14 @@ class FileService:
             if own and self._is_abandoned(existing):
                 await self._reclaim(existing)
                 inserted = await self._insert_video(
-                    video_id, name, description, channel_id,
-                    size, video_hash, privacy, category,
+                    video_id,
+                    name,
+                    description,
+                    channel_id,
+                    size,
+                    video_hash,
+                    privacy,
+                    category,
                 )
                 if not inserted:
                     raise DuplicateVideoError()
@@ -290,7 +342,9 @@ class FileService:
     #: Written by the converter beside the playlists, once, at encode time.
     DOWNLOAD_KEY = "download.mp4"
 
-    async def get_video_file(self, video_id: UUID, user_id: UUID) -> tuple[str, str, str]:
+    async def get_video_file(
+        self, video_id: UUID, user_id: UUID
+    ) -> tuple[str, str, str]:
         """Return (object_key, filename, media_type) for the download.
 
         There is one downloadable file per video and the converter builds

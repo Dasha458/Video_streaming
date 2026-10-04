@@ -86,6 +86,24 @@ class InvalidThumbnailFormatError(AppError):
         super().__init__(_("Invalid thumbnail format"))
 
 
+class ChannelNameUnavailableError(AppError):
+    """Every name derived from the username was already taken.
+
+    Channel names are unique platform-wide while usernames are their own
+    namespace, so the two can collide. This is the end of a long run of
+    collisions rather than a single one -- at that point the person
+    should choose a channel name rather than have one derived.
+    """
+
+    code = "CHANNEL_NAME_UNAVAILABLE"
+    status_code = 409
+
+    def __init__(self) -> None:
+        super().__init__(
+            _("Could not create a channel automatically; please choose a channel name")
+        )
+
+
 class ChannelNotFoundError(AppError):
     code = "CHANNEL_NOT_FOUND"
     status_code = 404

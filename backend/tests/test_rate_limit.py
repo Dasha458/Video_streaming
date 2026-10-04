@@ -164,16 +164,12 @@ class TestTheLocalBlockCache:
         assert redis.evalsha.await_count == 1
 
     @pytest.mark.asyncio
-    async def test_it_stops_being_served_once_the_window_has_passed(
-        self, monkeypatch
-    ):
+    async def test_it_stops_being_served_once_the_window_has_passed(self, monkeypatch):
         import time as time_module
 
         limiter, redis = self._limiter()
         clock = [1000.0]
-        monkeypatch.setattr(
-            time_module, "monotonic", lambda: clock[0]
-        )
+        monkeypatch.setattr(time_module, "monotonic", lambda: clock[0])
 
         assert await limiter.is_limited("1.2.3.4", "login", 5, 10) is True
         clock[0] += 11  # the ten-second window has passed
