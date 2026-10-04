@@ -1,8 +1,22 @@
 apiVersion: 1
 
+# Grafana will not change the uid of a datasource that already exists --
+# it answers "data source not found" and refuses to start. Removing them
+# first lets the definitions below be the single source of truth, which
+# is the point of provisioning them at all.
+deleteDatasources:
+  - name: Prometheus
+    orgId: 1
+  - name: Loki
+    orgId: 1
+
 datasources:
   - name: Prometheus
     type: prometheus
+    # Fixed so provisioned dashboards can reference it. Without a uid here
+    # Grafana generates one per installation, and a dashboard checked into
+    # the repository cannot name it.
+    uid: prometheus
     access: proxy
     url: http://prometheus:9090
     isDefault: true
@@ -10,6 +24,7 @@ datasources:
 
   - name: Loki
     type: loki
+    uid: loki
     access: proxy
     url: http://loki:3100
     editable: true

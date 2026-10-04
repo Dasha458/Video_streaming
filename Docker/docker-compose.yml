@@ -220,6 +220,11 @@ services:
       - GF_SERVER_ROOT_URL=http://localhost/grafana
     volumes:
       - ../monitoring/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
+      # Without these two the dashboard in the repository was never loaded:
+      # Grafana started empty everywhere except the machine whose volume
+      # happened to hold a hand-built copy.
+      - ../monitoring/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml
+      - ../monitoring/dashboard.json:/etc/grafana/provisioning/dashboards/dashboard.json
       - grafana_data:/var/lib/grafana
 
   vault:
