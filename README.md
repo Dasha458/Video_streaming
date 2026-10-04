@@ -66,7 +66,11 @@ cd Docker
 docker compose up -d
 ```
 
-Запустяться 19 сервісів: nginx, bff, frontend, convertor, postgres, redis, rabbitmq, minio, elasticsearch, vault, prometheus, grafana, loki, promtail + п'ять експортерів метрик (postgres-exporter, redis-exporter, elasticsearch-exporter, nginx-exporter, cadvisor).
+Запустяться 20 сервісів: nginx, bff, frontend, convertor, postgres, redis, rabbitmq, minio, elasticsearch, vault, prometheus, grafana, loki, promtail + п'ять експортерів метрик (postgres-exporter, redis-exporter, elasticsearch-exporter, nginx-exporter, cadvisor)
+та разовий `grafana-bootstrap`, який віддає Grafana її секрети з Vault і одразу завершується.
+
+> **Grafana підніметься лише після того, як Vault ініціалізовано (крок 4) і в ньому
+> є `secret/grafana`.** Решта стека від цього не залежить — застосунок працює й без Grafana.
 
 ### 4. Ініціалізація Vault (лише при першому запуску)
 
@@ -93,6 +97,7 @@ docker exec vault sh -c '
   vault kv put secret/github_oauth GITHUB_CLIENT_ID=<id> GITHUB_CLIENT_SECRET=<secret> GITHUB_CALLBACK_URL=http://localhost/api/auth/github/callback FRONTEND_URL=http://localhost
   vault kv put secret/redis     REDIS_HOST=redis REDIS_PORT=6379
   vault kv put secret/rabbitmq  RABBITMQ_HOST=rabbitmq RABBITMQ_PORT=5672 RABBITMQ_USER=guest RABBITMQ_PASSWORD=guest
+  vault kv put secret/grafana   ADMIN_PASSWORD=<сильний пароль> DB_PASSWORD=<сильний пароль>
 '
 
 # 4.4 Перезапустити bff, щоб він підхопив секрети.
@@ -184,7 +189,7 @@ Let's Encrypt видасть нові (і можна впертись у rate li
 | Головна сторінка | http://localhost | завжди |
 | API (JSON) | http://localhost/api/… | завжди |
 | Swagger | http://localhost/docs | **dev** |
-| Grafana | http://localhost/grafana (admin / admin) — 4 дашборди, див. [monitoring/README.md](monitoring/README.md) | **dev** |
+| Grafana | http://localhost/grafana (admin / пароль із Vault: `vault kv get -field=ADMIN_PASSWORD secret/grafana`) — 4 дашборди, див. [monitoring/README.md](monitoring/README.md) | **dev** |
 | Prometheus | http://localhost/prometheus | **dev** |
 | MinIO Console | http://localhost/minio/ui | **dev** |
 | RabbitMQ management | http://localhost/rabbitmq | **dev** |
