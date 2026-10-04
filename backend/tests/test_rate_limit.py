@@ -89,3 +89,95 @@ class TestOutcome:
         assert call["endpoint"] == "guarded"
         assert call["max_requests"] == 5
         assert call["window_seconds"] == 60
+
+
+class TestSurvivingARedisRestart:
+    """Redis forgets loaded scripts when it restarts.
+
+    The sha was cached for the life of the process, so from the moment
+    Redis came back every rate limited endpoint answered 500 -- login,
+    registration, uploads -- until somebody restarted the application.
+    Nothing noticed, because nothing had ever restarted Redis under a
+    running backend.
+    """
+
+    @staticmethod
+    def _limiter(evalsha):
+        from redis.exceptions import NoScriptError  # noqa: F401
+
+        from src.infrastructure.redis.rate_limiter import RateLimiter
+
+        redis = AsyncMock()
+        redis.script_load = AsyncMock(side_effect=["sha-1", "sha-2"])
+        redis.evalsha = evalsha
+        return RateLimiter(redis)
+
+    @pytest.mark.asyncio
+    async def test_a_dropped_script_is_loaded_again(self):
+        from redis.exceptions import NoScriptError
+
+        evalsha = AsyncMock(side_effect=[NoScriptError("NOSCRIPT"), 0])
+        limiter = self._limiter(evalsha)
+
+        blocked = await limiter.is_limited("1.2.3.4", "login", 5, 60)
+
+        assert blocked is False
+        assert evalsha.await_count == 2
+        # The second attempt uses the sha from the reload, not the stale one.
+        assert evalsha.await_args_list[1].args[0] == "sha-2"
+
+    @pytest.mark.asyncio
+    async def test_a_second_failure_is_not_swallowed(self):
+        """If the script cannot be loaded at all, that is a real failure
+        and the caller should see it rather than be let through."""
+        from redis.exceptions import NoScriptError
+
+        evalsha = AsyncMock(side_effect=[NoScriptError("x"), NoScriptError("x")])
+        limiter = self._limiter(evalsha)
+
+        with pytest.raises(NoScriptError):
+            await limiter.is_limited("1.2.3.4", "login", 5, 60)
+
+
+class TestTheLocalBlockCache:
+    """It used to hold every block for a flat 60 seconds, with a comment
+    saying it followed the window -- so a ten-second window locked an
+    address out for a minute after Redis would have let it through."""
+
+    @staticmethod
+    def _limiter():
+        from src.infrastructure.redis.rate_limiter import RateLimiter
+
+        redis = AsyncMock()
+        redis.script_load = AsyncMock(return_value="sha")
+        redis.evalsha = AsyncMock(return_value=1)  # blocked
+        return RateLimiter(redis), redis
+
+    @pytest.mark.asyncio
+    async def test_a_block_is_served_from_memory_while_it_lasts(self):
+        limiter, redis = self._limiter()
+
+        assert await limiter.is_limited("1.2.3.4", "login", 5, 60) is True
+        assert await limiter.is_limited("1.2.3.4", "login", 5, 60) is True
+
+        # The second answer came from memory: Redis was asked once.
+        assert redis.evalsha.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_it_stops_being_served_once_the_window_has_passed(
+        self, monkeypatch
+    ):
+        import time as time_module
+
+        limiter, redis = self._limiter()
+        clock = [1000.0]
+        monkeypatch.setattr(
+            time_module, "monotonic", lambda: clock[0]
+        )
+
+        assert await limiter.is_limited("1.2.3.4", "login", 5, 10) is True
+        clock[0] += 11  # the ten-second window has passed
+
+        redis.evalsha = AsyncMock(return_value=0)
+        assert await limiter.is_limited("1.2.3.4", "login", 5, 10) is False
+        redis.evalsha.assert_awaited_once()
