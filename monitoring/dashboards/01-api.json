@@ -121,7 +121,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "(sum(rate(fastapi_responses_total{app_name=\"$app_name\", status_code=~\"5..\"}[$__rate_interval])) or vector(0)) / clamp_min(sum(rate(fastapi_responses_total{app_name=\"$app_name\"}[$__rate_interval])), 0.0001)",
+          "expr": "clamp_max((sum(rate(fastapi_responses_total{app_name=\"$app_name\", status_code=~\"5..\"}[$__rate_interval])) or vector(0)) / clamp_min(sum(rate(fastapi_responses_total{app_name=\"$app_name\"}[$__rate_interval])), 0.0001), 1)",
           "refId": "A",
           "legendFormat": "5xx share"
         }
@@ -151,11 +151,12 @@
             "fillOpacity": 8,
             "lineWidth": 2,
             "showPoints": "never"
-          }
+          },
+          "max": 1
         },
         "overrides": []
       },
-      "description": "Share of responses that failed. The share matters more than the count: ten errors in a thousand requests and ten in ten are different incidents.",
+      "description": "Share of responses that failed. The share matters more than the count: ten errors in a thousand requests and ten in ten are different incidents. Clamped to 100% -- the guard that keeps it from dividing by zero during idle minutes would otherwise send the axis into the thousands.",
       "options": {
         "legend": {
           "displayMode": "list",

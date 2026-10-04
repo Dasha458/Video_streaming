@@ -1149,7 +1149,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "topk(10, rate(container_cpu_usage_seconds_total{name!=\"\"}[$__rate_interval]))",
+          "expr": "topk(10, sum by(name) (rate(container_cpu_usage_seconds_total{name!=\"\"}[$__rate_interval])))",
           "refId": "A",
           "legendFormat": "{{name}}"
         }
@@ -1198,7 +1198,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "topk(10, container_memory_usage_bytes{name!=\"\"})",
+          "expr": "topk(10, sum by(name) (container_memory_usage_bytes{name!=\"\"}))",
           "refId": "A",
           "legendFormat": "{{name}}"
         }
@@ -1246,7 +1246,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "topk(8, rate(container_network_receive_bytes_total{name!=\"\"}[$__rate_interval]))",
+          "expr": "topk(8, sum by(name) (rate(container_network_receive_bytes_total{name!=\"\"}[$__rate_interval])))",
           "refId": "A",
           "legendFormat": "{{name}}"
         }
@@ -1294,7 +1294,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "topk(8, rate(container_network_transmit_bytes_total{name!=\"\"}[$__rate_interval]))",
+          "expr": "topk(8, sum by(name) (rate(container_network_transmit_bytes_total{name!=\"\"}[$__rate_interval])))",
           "refId": "A",
           "legendFormat": "{{name}}"
         }

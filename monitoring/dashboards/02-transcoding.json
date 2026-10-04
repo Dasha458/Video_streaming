@@ -464,7 +464,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "rate(container_cpu_usage_seconds_total{name=\"ffmpeg_service\"}[$__rate_interval])",
+          "expr": "sum(rate(container_cpu_usage_seconds_total{name=\"ffmpeg_service\"}[$__rate_interval]))",
           "refId": "A",
           "legendFormat": "CPU cores"
         },
@@ -473,7 +473,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "container_memory_usage_bytes{name=\"ffmpeg_service\"} / 1024 / 1024 / 1024",
+          "expr": "sum(container_memory_usage_bytes{name=\"ffmpeg_service\"}) / 1024 / 1024 / 1024",
           "refId": "B",
           "legendFormat": "memory GiB"
         }
@@ -488,7 +488,7 @@
         },
         "overrides": []
       },
-      "description": "ffmpeg is the only service here that can saturate a machine on its own.",
+      "description": "ffmpeg is the only service here that can saturate a machine on its own. Summed per container: cAdvisor reports the container and its cgroups separately, which would otherwise draw the same number three times.",
       "options": {
         "legend": {
           "displayMode": "list",
