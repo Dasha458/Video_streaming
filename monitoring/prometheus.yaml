@@ -12,3 +12,40 @@ scrape_configs:
     metrics_path: /api/metrics
     static_configs:
       - targets: ["ffmpeg:9102"]
+
+  # ── Infrastructure ──────────────────────────────────────────────────
+  # Everything below is scraped through an exporter or a service's own
+  # built-in endpoint. Until these existed the only thing Prometheus knew
+  # about this stack was the two application services; a slow page caused
+  # by a saturated database or a backed-up queue was invisible.
+
+  - job_name: "postgres"
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+
+  - job_name: "redis"
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+
+  - job_name: "elasticsearch"
+    static_configs:
+      - targets: ["elasticsearch-exporter:9114"]
+
+  - job_name: "rabbitmq"
+    # Built into the broker (rabbitmq_prometheus), no exporter needed.
+    static_configs:
+      - targets: ["rabbitmq:15692"]
+
+  - job_name: "minio"
+    metrics_path: /minio/v2/metrics/cluster
+    static_configs:
+      - targets: ["minio:9000"]
+
+  - job_name: "nginx"
+    static_configs:
+      - targets: ["nginx-exporter:9113"]
+
+  - job_name: "containers"
+    # cAdvisor: CPU, memory, network and disk per container.
+    static_configs:
+      - targets: ["cadvisor:8080"]

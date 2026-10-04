@@ -58,6 +58,7 @@ services:
       POSTGRES_MULTIPLE_DATABASES: "${VIDEO_DB}"
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./postgres/postgres_entrypoint.sh:/docker-entrypoint-initdb.d/postgres_entrypoint.sh
@@ -127,6 +128,11 @@ services:
       MINIO_REGION_NAME: ${MINIO_REGION_NAME}
       MINIO_BROWSER_REDIRECT_URL: http://localhost/minio/ui
       MINIO_PROMETHEUS_URL: http://prometheus:9090
+      # Without this the metrics endpoint demands a bearer token minted
+      # by `mc admin prometheus generate`, which nothing here holds. No
+      # port of MinIO's is published, so the endpoint is reachable only
+      # from inside the compose network.
+      MINIO_PROMETHEUS_AUTH_TYPE: public
     command: minio server /minio_data --console-address ":9001"
     volumes:
       - minio_data:/minio_data
@@ -166,6 +172,12 @@ services:
     expose:
       - "5672"
       - "15672"
+      - "15692"
+    volumes:
+      # rabbitmq_prometheus ships with the image but is off by default, and
+      # queue depth is the one number that says whether encoding is keeping
+      # up with uploads.
+      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins
     healthcheck:
       test: [ "CMD-SHELL", "rabbitmqctl status" ]
       interval: 10s
@@ -218,13 +230,21 @@ services:
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_SERVER_SERVE_FROM_SUB_PATH=true
       - GF_SERVER_ROOT_URL=http://localhost/grafana
+      # Read by datasources.yaml; the read-only database login is not
+      # committed to the repository.
+      - VIDEO_DB=${VIDEO_DB}
+      - GRAFANA_DB_PASSWORD=${GRAFANA_DB_PASSWORD}
     volumes:
       - ../monitoring/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
       # Without these two the dashboard in the repository was never loaded:
       # Grafana started empty everywhere except the machine whose volume
       # happened to hold a hand-built copy.
       - ../monitoring/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml
-      - ../monitoring/dashboard.json:/etc/grafana/provisioning/dashboards/dashboard.json
+      - ../monitoring/alerting.yaml:/etc/grafana/provisioning/alerting/alerting.yaml
+      # The dashboards themselves live outside the provisioning folder so
+      # the whole directory can be mounted at once -- a new board is a new
+      # file, with nothing else to remember.
+      - ../monitoring/dashboards:/etc/grafana/dashboards:ro
       - grafana_data:/var/lib/grafana
 
   vault:
@@ -294,6 +314,82 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+
+  # ── Exporters ─────────────────────────────────────────────────────────
+  # Postgres, Redis and Elasticsearch speak no Prometheus of their own.
+  # Each exporter is a small translator: it queries the service the normal
+  # way and republishes the answer as metrics. They hold read credentials
+  # only and publish no host port.
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: postgres_exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${VIDEO_DB}?sslmode=disable"
+      PG_EXPORTER_EXCLUDE_DATABASES: "template0,template1"
+    expose:
+      - "9187"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: redis_exporter
+    command: ["--redis.addr", "redis://redis:6379"]
+    expose:
+      - "9121"
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  elasticsearch-exporter:
+    image: quay.io/prometheuscommunity/elasticsearch-exporter:latest
+    container_name: elasticsearch_exporter
+    command:
+      - "--es.uri=http://elastic:${ELASTIC_PASSWORD}@elasticsearch:9200"
+      - "--es.indices"
+      - "--es.indices_settings"
+    expose:
+      - "9114"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+    restart: unless-stopped
+
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:latest
+    container_name: nginx_exporter
+    command:
+      - "--nginx.scrape-uri=http://nginx:8080/stub_status"
+    expose:
+      - "9113"
+    depends_on:
+      - nginx
+    restart: unless-stopped
+
+  cadvisor:
+    # Per-container CPU, memory, disk and network for every service at
+    # once -- the only thing here that can answer "which container ate the
+    # machine" without guessing.
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    privileged: true
+    expose:
+      - "8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    command:
+      - "--housekeeping_interval=15s"
+      - "--docker_only=true"
+      - "--store_container_labels=false"
+    restart: unless-stopped
 
 volumes:
   minio_data:
