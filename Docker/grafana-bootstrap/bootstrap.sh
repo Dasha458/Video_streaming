@@ -140,9 +140,26 @@ YAML
     chmod 400 "$ALERTING_DIR/telegram.yaml"
     log "Telegram contact point written (chat ${TELEGRAM_CHAT_ID})"
 else
-    # Removed rather than left stale, so clearing the secret in Vault
-    # actually turns delivery off.
-    rm -f "$ALERTING_DIR/telegram.yaml"
+    # Deleting the file is not enough: Grafana keeps what provisioning
+    # once created, so a contact point whose file disappeared stays in
+    # its database and keeps receiving alerts. Clearing the secret in
+    # Vault has to say so out loud, or "turn delivery off" would be a
+    # claim this script does not actually honour. resetPolicies first --
+    # a contact point still referenced by a route cannot be removed.
+    cat > "$ALERTING_DIR/telegram.yaml" <<'YAML'
+# Generated at start: no Telegram credentials are stored in Vault, so
+# any contact point a previous run created is removed here.
+apiVersion: 1
+
+resetPolicies:
+  - 1
+
+deleteContactPoints:
+  - orgId: 1
+    uid: telegram-main
+YAML
+    chown "$GRAFANA_UID":0 "$ALERTING_DIR/telegram.yaml"
+    chmod 400 "$ALERTING_DIR/telegram.yaml"
     log "no TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID in Vault -- alerts will be"
     log "visible in Grafana but delivered nowhere"
 fi
