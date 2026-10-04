@@ -1,6 +1,9 @@
+import hashlib
+import secrets
 import uuid
 from typing import AsyncGenerator, Optional, TypeVar
 
+import jwt
 from fastapi import Depends, Request, Response
 from fastapi_users import BaseUserManager, FastAPIUsers, UUIDIDMixin, models, schemas
 from fastapi_users.authentication import (
@@ -9,6 +12,7 @@ from fastapi_users.authentication import (
     JWTStrategy,
 )
 from fastapi_users.exceptions import InvalidPasswordException
+from fastapi_users.jwt import decode_jwt, generate_jwt
 from fastapi_users_db_sqlalchemy import SQLAlchemyUserDatabase
 from httpx_oauth.clients.github import GitHubOAuth2
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -149,8 +153,72 @@ def clear_access_cookie(response: _R) -> _R:
     return response
 
 
-def get_jwt_strategy() -> JWTStrategy:
-    return JWTStrategy(
+def password_fingerprint(hashed_password: str | None) -> str:
+    """A short, non-reversible marker of the current password.
+
+    Carried in the session token so that changing the password makes
+    every token issued before it stop working. It is a hash of the
+    stored hash: it identifies the password without the token
+    containing anything useful about it.
+    """
+    return hashlib.sha256((hashed_password or "").encode()).hexdigest()[:16]
+
+
+class PasswordBoundJWTStrategy(JWTStrategy):
+    """A session that does not outlive the password it was issued under.
+
+    Tokens were stateless and nothing tied them to the password, so
+    changing it left every existing session valid for the rest of the
+    hour -- on every device, including whoever's access prompted the
+    change. People change their password precisely because somebody else
+    may have it.
+
+    A per-user generation column would do the same job with a database
+    write on every request. The password's own fingerprint is already
+    loaded while authenticating, so this costs nothing.
+    """
+
+    CLAIM = "pwd"
+
+    async def write_token(self, user: models.UP) -> str:
+        data = {
+            "sub": str(user.id),
+            "aud": self.token_audience,
+            self.CLAIM: password_fingerprint(getattr(user, "hashed_password", None)),
+        }
+        return generate_jwt(
+            data, self.encode_key, self.lifetime_seconds, algorithm=self.algorithm
+        )
+
+    async def read_token(self, token, user_manager):
+        user = await super().read_token(token, user_manager)
+        if user is None:
+            return None
+
+        try:
+            data = decode_jwt(
+                token, self.decode_key, self.token_audience, algorithms=[self.algorithm]
+            )
+        except jwt.PyJWTError:
+            return None
+
+        presented = data.get(self.CLAIM)
+        if presented is None:
+            # Issued before this claim existed. Those tokens are not
+            # bound to a password and cannot be trusted to have survived
+            # one being changed; they expire within the hour anyway.
+            return None
+
+        if not secrets.compare_digest(
+            presented, password_fingerprint(getattr(user, "hashed_password", None))
+        ):
+            return None
+
+        return user
+
+
+def get_jwt_strategy() -> PasswordBoundJWTStrategy:
+    return PasswordBoundJWTStrategy(
         secret=jwt_settings.JWT_SECRET, lifetime_seconds=TOKEN_LIFETIME_SECONDS
     )
 

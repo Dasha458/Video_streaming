@@ -90,13 +90,25 @@ async def update_me(
     return UserPublic.model_validate(user)
 
 
-@router_auth.post("/me/change-password", status_code=204)
+@router_auth.post("/me/change-password", status_code=204, response_class=Response)
 async def change_password(
     data: PasswordChangeRequest,
     user: User = Depends(current_active_user),
     auth_service: AuthService = Depends(get_auth_service),
-) -> None:
+) -> Response:
+    """Change the password and end every other session.
+
+    Sessions are bound to the password they were issued under, so this
+    makes every token handed out earlier stop working -- on every device.
+    That is the point: people change their password because somebody else
+    may have it.
+
+    The browser doing the changing is given a new cookie, so the one
+    person who is certainly entitled to stay signed in does.
+    """
     await auth_service.change_password(user, data.current_password, data.new_password)
+    token = await get_jwt_strategy().write_token(user)
+    return set_access_cookie(Response(status_code=204), token)
 
 
 @router_auth.get("/admin")
