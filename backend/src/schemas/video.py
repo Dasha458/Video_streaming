@@ -73,6 +73,10 @@ class VideoPlayback(BaseModel):
     dislikes_count: int
     views_count: int
     master_hls_url: Optional[str] = None
+    #: Whether the person asking is the one who uploaded it. The client
+    #: needs this to decide whether to offer the download at all -- the
+    #: button used to be shown to everyone and refused by the server.
+    is_owner: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -127,7 +131,9 @@ def to_video_preview(video: Video) -> VideoPreview:
     )
 
 
-def map_video_to_playback(video: Video, resolutions: list[str]) -> VideoPlayback:
+def map_video_to_playback(
+    video: Video, resolutions: list[str], is_owner: bool = False
+) -> VideoPlayback:
     return VideoPlayback(
         id=video.id,
         name=video.name,
@@ -145,6 +151,7 @@ def map_video_to_playback(video: Video, resolutions: list[str]) -> VideoPlayback
         views_count=video.views_count,
         thumbnail_url=video.thumbnail_path,
         avatar_url=video.channel.avatar_path,
+        is_owner=is_owner,
     )
 
 
@@ -188,14 +195,6 @@ class VideoUploadParams(BaseModel):
     @classmethod
     def strip_description(cls, v: str) -> str:
         return v.strip()
-
-
-class VideoDownloadQuery(BaseModel):
-    resolution: Optional[str] = Field(
-        default=None,
-        description="Specific resolution to download (e.g., '360p', '720p', '1080p'). "
-        "If omitted, original file is returned.",
-    )
 
 
 class StreamUrlResponse(BaseModel):

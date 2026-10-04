@@ -207,19 +207,32 @@ export const getVideoDownloadInfo = async (
   return res.data;
 };
 
-export const downloadVideo = async (
-  videoId: string,
-  resolution = "720p",
-): Promise<Blob> => {
+/** The one MP4 the converter prepared for this video.
+ *
+ *  The resolution parameter is gone: asking for one returned the HLS
+ *  playlist with a .mp4 name. The error is no longer replaced with a
+ *  fixed string either -- the server explains whether the video is still
+ *  encoding or has no downloadable file, and the caller showed "Failed to
+ *  download video" over the top of it. */
+export const downloadVideo = async (videoId: string): Promise<Blob> => {
   try {
     const res = await clientApi.get(`/api/files/videos/${videoId}/download`, {
-      params: { resolution },
       responseType: "blob",
     });
     return res.data;
   } catch (err) {
-    console.error("Download error:", err);
-    return Promise.reject({ message: "Failed to download video" });
+    // responseType "blob" applies to failures too, so the error body
+    // arrives as a Blob and every reader of response.data.message sees
+    // undefined. Decoding it here keeps the explanation the server sent.
+    const body = (err as AxiosError)?.response?.data;
+    if (body instanceof Blob) {
+      try {
+        (err as AxiosError).response!.data = JSON.parse(await body.text());
+      } catch {
+        // Not JSON -- leave it alone and let the caller's fallback show.
+      }
+    }
+    throw err;
   }
 };
 

@@ -64,6 +64,8 @@ export interface Video {
   title: string;
   name: string;
   avatar_url?: string;
+  /** Set by GET /api/videos/{id} for the signed-in viewer. */
+  is_owner?: boolean;
   master_hls_url: string;
   thumbnail_url: string;
   created_at: string;
@@ -187,6 +189,10 @@ export type VideoDetail = VideoPreview & {
   likesCount: number;
   dislikeCount: number;
   userReaction: "like" | "dislike" | null;
+  /** Whether the signed-in viewer uploaded this. Decides whether the
+   *  download is offered: it used to be offered to everyone and refused
+   *  by the server. */
+  isOwner: boolean;
 };
 
 export type VideoPreviewWithTime = VideoPreview & {

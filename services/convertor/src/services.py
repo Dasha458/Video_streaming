@@ -246,6 +246,111 @@ async def stream_ffmpeg(
     return rc
 
 
+# ---------- The file the Download button hands over ----------
+
+#: The rendition the downloadable file is built from. 720p is the one
+#: people mean by "a copy of the video": smaller than the source, large
+#: enough to be worth keeping.
+DOWNLOAD_HEIGHT = 720
+
+#: The name it is stored under, next to the playlists, so the backend can
+#: find it from the video id alone.
+DOWNLOAD_NAME = "download.mp4"
+
+
+def _download_source(output_dir: Path) -> Path | None:
+    """The playlist to build the downloadable file from.
+
+    720p when it exists. A source shorter than 720 lines never produces
+    that rendition -- upscaling would be inventing detail -- so the
+    highest one ffmpeg actually wrote is used instead. Returns None when
+    there is nothing at all, which is a failed encode's business, not
+    this function's.
+    """
+    for rendition in sorted(
+        LADDER,
+        key=lambda r: (r.height != DOWNLOAD_HEIGHT, -r.height),
+    ):
+        playlist = output_dir / f"stream_{rendition.name}" / "playlist.m3u8"
+        if playlist.exists():
+            return playlist
+    return None
+
+
+async def build_download_file(output_dir: Path, has_audio: bool = True) -> Path | None:
+    """Assemble one playable .mp4 beside the HLS output.
+
+    The Download button could not hand over a playable file by any route:
+    asked for a resolution it returned the .m3u8 playlist with a .mp4
+    name -- a few hundred bytes of text -- and asked for the original it
+    looked for a key the converter deletes once the encode succeeds.
+
+    This is a remux, not an encode: the segments are already H.264 and
+    AAC, so they are copied into an MP4 container. It costs seconds and
+    no quality, where re-encoding would cost minutes of CPU per video.
+
+    `aac_adtstoasc` converts the ADTS audio headers MPEG-TS carries into
+    the form MP4 expects; `+faststart` moves the index to the front so
+    the file plays while it is still downloading.
+    """
+    playlist = _download_source(output_dir)
+    if playlist is None:
+        logging.warning(
+            "No rendition to build a downloadable file from",
+            extra={"output_dir": str(output_dir)},
+        )
+        return None
+
+    target = output_dir / DOWNLOAD_NAME
+    cmd = [
+        "ffmpeg",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        # A local playlist pointing at local segments; nothing else is
+        # allowed to be fetched while reading it.
+        "-protocol_whitelist",
+        "file,crypto,data",
+        "-i",
+        str(playlist),
+        "-c",
+        "copy",
+        "-movflags",
+        "+faststart",
+    ]
+    if has_audio:
+        cmd += ["-bsf:a", "aac_adtstoasc"]
+    cmd.append(str(target))
+
+    try:
+        process = await asyncio.create_subprocess_exec(*cmd, stderr=subprocess.PIPE)
+    except Exception as e:
+        raise FFmpegStartError() from e
+
+    stderr = await process.stderr.read() if process.stderr else b""
+    rc = await process.wait()
+    if rc != 0:
+        raise FFmpegExecutionError(
+            return_code=rc,
+            stderr=stderr.decode(errors="ignore").strip()[-500:] or "No stderr output",
+        )
+
+    # ffmpeg can exit 0 having written nothing -- an empty playlist is
+    # the usual way. Reporting success here would publish a video whose
+    # Download button leads to a key that is not there.
+    if not target.exists() or target.stat().st_size == 0:
+        raise FFmpegExecutionError(
+            return_code=0, stderr="ffmpeg succeeded but produced no file"
+        )
+
+    logging.info(
+        "Built the downloadable file",
+        extra={"source": playlist.parent.name, "bytes": target.stat().st_size},
+    )
+    return target
+
+
 async def get_video_properties(url: str) -> VideoProperties:
     cmd = [
         "ffprobe",

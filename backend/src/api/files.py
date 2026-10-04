@@ -21,7 +21,7 @@ from src.schemas.endpoint import (
     FileResponse,
     FileStreamResponse,
 )
-from src.schemas.video import VideoDownloadQuery, VideoUploadParams
+from src.schemas.video import VideoUploadParams
 from src.services.dependencies import get_current_user_id
 from src.services.files import FileService
 
@@ -103,21 +103,19 @@ async def upload_files(
     },
 )
 async def get_file(
-    payload: Annotated[VideoDownloadQuery, Depends()],
-    video_id: UUID = Path(..., description="UUID of the video to delete."),
+    video_id: UUID = Path(..., description="UUID of the video to download."),
     user_id: UUID = Depends(get_current_user_id),
     service: FileService = Depends(get_file_service),
 ) -> StreamingResponse:
     """
-    Downloads and streams a stored video file.
+    Downloads the video as a single MP4 file.
 
-    Allows a user to download a video file stored in the object storage. The video
-    may be requested in its original resolution or a specific resolution as
-    available. The response is streamed as a binary file.
+    There is one downloadable file per video, built by the converter at
+    encode time. The resolution parameter this used to accept could only
+    return an HLS playlist named .mp4, so it is gone rather than fixed.
+    Only the video's owner may download it.
     """
-    object_key, filename, media_type = await service.get_video_file(
-        video_id, user_id, payload.resolution
-    )
+    object_key, filename, media_type = await service.get_video_file(video_id, user_id)
     chunk_gen = service.stream_file(object_key, bucket_name="videos")
 
     headers = {"Content-Disposition": f'attachment; filename="{filename}"'}

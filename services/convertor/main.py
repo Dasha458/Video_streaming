@@ -7,12 +7,19 @@ from faststream.rabbit import RabbitBroker
 from prometheus_client import CollectorRegistry, make_asgi_app
 
 from src.config import get_rabbitmq_settings
-from src.exceptions import AppError, FFmpegExecutionError, InvalidMediaError
+from src.exceptions import (
+    AppError,
+    FFmpegExecutionError,
+    FFmpegStartError,
+    InvalidMediaError,
+)
 from src.messages import EncodeStatusMessage
 from src.metrics import EncodeMetrics
 from src.renditions import LADDER
 from src.s3_client import get_s3_client
 from src.services import (
+    DOWNLOAD_NAME,
+    build_download_file,
     check_liveness,
     cleanup_dirs,
     get_video_properties,
@@ -106,6 +113,19 @@ async def encode_video(filename: str) -> None:
             # problem long before it is an outage.
             metrics.encoder.labels(encoder="cpu").inc()
 
+        # Built before the upload so it travels with everything else:
+        # upload_dir sends the whole tree, so the file needs no special
+        # handling at either end.
+        try:
+            await build_download_file(base_dir, properties.has_audio)
+        except (FFmpegStartError, FFmpegExecutionError, OSError):
+            # A video nobody can download is worse than nothing to
+            # download; a video nobody can watch because the remux failed
+            # would be far worse. The encode stands.
+            logging.exception(
+                "Could not build the downloadable file", extra={"video_id": video_id}
+            )
+
         await s3_client.upload_dir(video_id, base_dir, bucket_name="videos")
 
         # Report exactly the renditions ffmpeg wrote, described by the same
@@ -161,3 +181,66 @@ async def encode_video(filename: str) -> None:
             logging.debug("Cleanup completed", extra={"video_id": video_id})
         except AppError:
             logging.exception("Cleanup failed", extra={"video_id": video_id})
+
+
+@broker.subscriber("video.download.build")
+async def build_download_for_existing(video_id: str) -> None:
+    """Build the downloadable file for a video that was encoded without one.
+
+    Everything uploaded before the converter started producing
+    download.mp4 has playlists and segments but no single file, so its
+    owner sees "no downloadable file is available". Rather than re-encode
+    from a source that no longer exists -- the converter deletes it once
+    the encode succeeds -- this fetches the rendition already in storage
+    and remuxes it, which is the same work the encode path now does at
+    the end, and costs seconds.
+
+    Driven by `python -m utils.backfill_downloads` on the backend side.
+    """
+    s3_client = get_s3_client()
+    base_dir = await prepare_dirs(f"backfill-{video_id}")
+
+    try:
+        existing = await s3_client.list_keys(
+            f"{video_id}/{DOWNLOAD_NAME}", bucket_name="videos"
+        )
+        if existing:
+            logging.info(
+                "Downloadable file already present, nothing to do",
+                extra={"video_id": video_id},
+            )
+            return
+
+        fetched = await s3_client.download_prefix(
+            f"{video_id}/", base_dir, bucket_name="videos"
+        )
+        if not fetched:
+            logging.warning(
+                "Nothing in storage for this video; it cannot be rebuilt",
+                extra={"video_id": video_id},
+            )
+            return
+
+        # Audio is not recorded anywhere by the time a video is ready, and
+        # the filter is a no-op on a stream that has none.
+        built = await build_download_file(base_dir, has_audio=True)
+        if built is None:
+            logging.warning(
+                "No rendition to rebuild from", extra={"video_id": video_id}
+            )
+            return
+
+        with built.open("rb") as handle:
+            await s3_client.upload_file(
+                f"{video_id}/{DOWNLOAD_NAME}", handle, bucket_name="videos"
+            )
+        logging.info("Backfilled the downloadable file", extra={"video_id": video_id})
+
+    except Exception:
+        # One video failing must not stop the queue; the script reports
+        # what it published and the logs say what happened to each.
+        logging.exception(
+            "Could not backfill the downloadable file", extra={"video_id": video_id}
+        )
+    finally:
+        cleanup_dirs(f"backfill-{video_id}")

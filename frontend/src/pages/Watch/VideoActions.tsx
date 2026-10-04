@@ -7,8 +7,6 @@ import { formatCompact } from "@/utils/formatters";
 import type { VideoDetail } from "@api/types";
 import { PlaylistMenu } from "./PlaylistMenu";
 
-const RESOLUTIONS = ["360p", "720p", "1080p"];
-
 interface VideoActionsProps {
     video: VideoDetail;
     videoId: string;
@@ -18,10 +16,9 @@ interface VideoActionsProps {
 
 /** Like / dislike / share / watch-later / save / download row under the player. */
 export function VideoActions({ video, videoId, isSignedIn, onVideoUpdate }: VideoActionsProps) {
-    const [resolution, setResolution] = useState("720p");
     const [watchLaterDone, setWatchLaterDone] = useState(false);
 
-    const { handleDownload } = useDownload({ video, resolution });
+    const { handleDownload } = useDownload({ video });
     const { handleReaction } = useReactions({
         initialVideo: video,
         initialUserReaction: null,
@@ -77,23 +74,18 @@ export function VideoActions({ video, videoId, isSignedIn, onVideoUpdate }: Vide
 
             {isSignedIn && <PlaylistMenu videoId={videoId} />}
 
-            <div className="flex items-center gap-1 rounded-full bg-muted overflow-hidden">
+            {/* Downloading is the uploader's own. The button used to be
+                shown to everyone and refused by the server, and the
+                resolution next to it could only ever fetch a playlist. */}
+            {video.isOwner && (
                 <button
                     onClick={() => handleDownload()}
-                    className="flex items-center gap-1.5 px-4 py-2 hover:bg-muted/70 transition-colors text-sm font-medium"
+                    className="flex items-center gap-1.5 rounded-full bg-muted px-4 py-2 text-sm font-medium hover:bg-muted/70 transition-colors"
                 >
                     <Download className="h-4 w-4" />
                     Download
                 </button>
-                <select
-                    value={resolution}
-                    onChange={(e) => setResolution(e.target.value)}
-                    className="bg-transparent pr-2 py-2 text-sm focus:outline-none cursor-pointer"
-                    aria-label="Download resolution"
-                >
-                    {RESOLUTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
-                </select>
-            </div>
+            )}
         </div>
     );
 }

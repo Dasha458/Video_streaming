@@ -156,3 +156,29 @@ class EmptyFileError(AppError):
 
     def __init__(self) -> None:
         super().__init__(_("The uploaded file is empty"))
+
+
+class DownloadNotReadyError(AppError):
+    """Asked for before the encode finished."""
+
+    code = "DOWNLOAD_NOT_READY"
+    status_code = 409
+
+    def __init__(self) -> None:
+        super().__init__(
+            _("This video is still being processed; the download is not ready yet")
+        )
+
+
+class DownloadUnavailableError(AppError):
+    """Ready, but no downloadable file was ever built for it.
+
+    True of everything uploaded before the converter started producing
+    one, and of a video whose remux failed while the encode stood.
+    """
+
+    code = "DOWNLOAD_UNAVAILABLE"
+    status_code = 404
+
+    def __init__(self) -> None:
+        super().__init__(_("No downloadable file is available for this video"))

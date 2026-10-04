@@ -1,4 +1,5 @@
 import logging
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from collections.abc import AsyncGenerator
@@ -24,13 +25,14 @@ from src.core.status_ids import (
 from src.errors.files import (
     AlreadyUploadedError,
     ChannelNotFoundError,
+    DownloadNotReadyError,
+    DownloadUnavailableError,
     DuplicateVideoError,
     EmptyFileError,
     FileTooLargeError,
     InvalidThumbnailFormatError,
     InvalidVideoFormatError,
     JobPublishFailedError,
-    ResolutionNotFoundError,
     S3DeletionError,
     S3DownloadError,
 )
@@ -38,7 +40,6 @@ from src.errors.videos import VideoNotFoundError
 from src.models.channel import Channel
 from src.models.user import User
 from src.models.video import Video
-from src.models.video_resolutions import VideoResolution
 from src.schemas.endpoint import FileMeta, FileResponse
 
 if TYPE_CHECKING:
@@ -316,10 +317,25 @@ class FileService:
             ],
         )
 
-    async def get_video_file(
-        self, video_id: UUID, user_id: UUID, resolution: Optional[str] = None
-    ) -> tuple[str, str, str]:
-        """Return (object_key, filename, media_type) for streaming"""
+    #: Written by the converter beside the playlists, once, at encode time.
+    DOWNLOAD_KEY = "download.mp4"
+
+    async def get_video_file(self, video_id: UUID, user_id: UUID) -> tuple[str, str, str]:
+        """Return (object_key, filename, media_type) for the download.
+
+        There is one downloadable file per video and the converter builds
+        it: a 720p MP4 remuxed from the rendition it already produced.
+
+        Both earlier routes were broken, which is why neither was ever
+        reported. Asked for a resolution this returned the .m3u8 playlist
+        with a .mp4 filename -- a few hundred bytes of text saved as a
+        video. Asked for the original it looked up the key
+        ``str(video.id)``, while the upload is stored as ``<id><suffix>``
+        and is deleted by the converter the moment the encode succeeds.
+
+        Only the owner reaches this: the join on the channel is the
+        authorisation, and it was already here.
+        """
         result = await self.session.execute(
             select(Video)
             .join(Channel, Channel.id == Video.channel_id)
@@ -329,27 +345,25 @@ class FileService:
         if not video:
             raise VideoNotFoundError()
 
-        if resolution:
-            target_height = int(resolution.rstrip("p"))
-            res_result = await self.session.execute(
-                select(VideoResolution).where(
-                    (VideoResolution.video_id == video_id)
-                    & (VideoResolution.height == target_height)
-                )
-            )
-            res_obj = res_result.scalar_one_or_none()
-            if not res_obj:
-                raise ResolutionNotFoundError(resolution)
-            object_key = res_obj.playlist_path.lstrip("/")
-            filename = f"{video.name}_{res_obj.height}p.m3u8"
-            media_type = "application/vnd.apple.mpegurl"
-        else:
-            # Default/original file
-            object_key = str(video.id)
-            filename = f"{video.name}.mp4"
-            media_type = "video/mp4"
+        if video.status_id != STATUS_READY_ID:
+            # Saying "not found" for a video the owner is looking at in
+            # Studio, labelled Processing, explains nothing.
+            raise DownloadNotReadyError()
 
-        return object_key, filename, media_type
+        object_key = f"{video.id}/{self.DOWNLOAD_KEY}"
+        if not await self.s3_client.list_keys(object_key, bucket_name="videos"):
+            # Encoded before the converter built these, or the remux
+            # failed and the encode was allowed to stand.
+            raise DownloadUnavailableError()
+
+        # Characters Windows and macOS refuse in a filename, and the
+        # quote that would end the Content-Disposition header early.
+        # The replacements are stripped too: a title made only of slashes
+        # would otherwise be handed over as "_.mp4".
+        safe_name = (
+            re.sub(r'[\\/:*?"<>|\r\n]+', "_", video.name).strip(" ._") or "video"
+        )
+        return object_key, f"{safe_name}.mp4", "video/mp4"
 
     def stream_file(
         self,

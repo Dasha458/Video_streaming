@@ -50,9 +50,10 @@ class VideoService:
         # keeps the endpoint from confirming that the id exists.
         is_public = video.privacy_id == PRIVACY_PUBLIC_ID
         is_ready = video.status_id == STATUS_READY_ID
+        owner_id = video.channel.user_id if video.channel else None
+        is_owner = user_id is not None and owner_id == user_id
         if not (is_public and is_ready):
-            owner_id = video.channel.user_id if video.channel else None
-            if user_id is None or owner_id != user_id:
+            if not is_owner:
                 raise VideoNotFoundError()
 
         if viewer_key:
@@ -61,7 +62,7 @@ class VideoService:
             )
 
         resolutions = [f"{r.height}p" for r in video.resolutions]
-        return map_video_to_playback(video, resolutions)
+        return map_video_to_playback(video, resolutions, is_owner=is_owner)
 
     async def list_videos(
         self,
