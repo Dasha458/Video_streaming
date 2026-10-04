@@ -18,15 +18,46 @@ monitoring/
 
 ## Getting in
 
-`http://localhost/grafana`, `admin` / `admin`.
+`http://localhost/grafana`, user `admin`. The password is in Vault:
 
-That is the container's own admin account, set in
-`Docker/docker-compose.yml` — not anybody's personal login. The route
-exists **only in the dev profile** (`docker-compose.dev.yml`); the
-production layout does not publish Grafana at all.
+```bash
+docker exec vault vault kv get -field=ADMIN_PASSWORD secret/grafana
+```
 
-For a real deployment the password belongs in Vault or `.env`, not in
-the compose file.
+It is the container's own admin account — not anybody's personal login.
+The route exists **only in the dev profile**
+(`docker-compose.dev.yml`); the production layout does not publish
+Grafana at all.
+
+### How the secret gets there
+
+Grafana cannot read Vault itself; that is an Enterprise feature. So
+`grafana-bootstrap` runs first, reads `secret/grafana`, and writes the
+values as mode-400 files owned by Grafana's uid. Grafana reads them with
+`GF_SECURITY_ADMIN_PASSWORD__FILE` and, in `datasources.yaml`,
+`$__file{...}`.
+
+Files rather than environment variables on purpose: an environment
+variable is visible to anything that can run `docker inspect` or read
+`/proc`, and it shows up in `docker compose config`.
+
+One wrinkle worth knowing: Grafana applies the admin password **only
+when it first creates the user**, on an empty volume. An installation
+that was ever created with `admin`/`admin` keeps it forever, whatever
+the configuration says. `Docker/grafana/entrypoint.sh` therefore resets
+it from the file on every start, before the server comes up.
+
+The read-only database login is kept in step by the same bootstrap: it
+runs `CREATE`/`ALTER ROLE` with the password from Vault on every start,
+so an existing database is corrected rather than left for somebody to
+fix by hand.
+
+To change the password:
+
+```bash
+docker exec vault vault kv patch secret/grafana ADMIN_PASSWORD='<new>'
+docker compose up -d --force-recreate grafana-bootstrap grafana
+```
 
 ## The dashboards
 
@@ -62,28 +93,10 @@ for every question somebody might ask.
 
 ### The read-only database login
 
-Created automatically on a fresh volume by
-`Docker/postgres/postgres_entrypoint.sh`, from `GRAFANA_DB_PASSWORD` in
-`Docker/.env`.
-
-On a database that already exists the init script does not run again, so
-apply it once by hand:
-
-```bash
-docker compose exec -T postgres psql -U "$POSTGRES_USER" -d "$VIDEO_DB" <<'SQL'
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'grafana_ro') THEN
-        CREATE ROLE grafana_ro LOGIN PASSWORD 'the value from Docker/.env';
-    END IF;
-END
-$$;
-GRANT CONNECT ON DATABASE "VideoDB" TO grafana_ro;
-GRANT USAGE ON SCHEMA public TO grafana_ro;
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO grafana_ro;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO grafana_ro;
-SQL
-```
+`grafana_ro` holds `SELECT` and nothing else. It is created and kept in
+step by `grafana-bootstrap` from `DB_PASSWORD` in `secret/grafana`,
+on every start — there is no manual step and no second copy of the
+password anywhere.
 
 Worth confirming it really is read-only after any change:
 
@@ -123,9 +136,41 @@ Each one has to stay true for minutes before it fires. That is not
 decoration — an alert that fires on a ten-second spike gets muted within
 a week, and then it protects nothing.
 
-They are visible under **Alerting → Alert rules**. Delivering them
-somewhere (email, Slack, Telegram) needs a contact point, which is not
-provisioned here because it depends on where notifications should go.
+They are visible under **Alerting → Alert rules**.
+
+### Delivery to Telegram
+
+Put the bot token and the chat id in Vault and the contact point
+appears; clear them and it disappears:
+
+```bash
+docker exec vault vault kv patch secret/grafana     TELEGRAM_BOT_TOKEN='123456:AA...' TELEGRAM_CHAT_ID='-1001234567890'
+docker compose up -d --force-recreate grafana-bootstrap grafana
+```
+
+`grafana-bootstrap` writes `telegram.yaml` into the alerting
+provisioning folder — a contact point plus a notification policy that
+routes every alert to it. The file is generated rather than committed
+because it carries the token; the rules beside it are committed because
+they do not.
+
+The policy groups by alert name, waits 30 seconds before the first
+message and repeats at most every four hours. A channel that repeats
+itself every thirty seconds gets muted, and a muted channel is worth
+nothing.
+
+Getting the two values: create the bot with
+[@BotFather](https://t.me/BotFather) (`/newbot`) — it replies with the
+token. For the chat id, send the bot a message (or add it to a group and
+send one there), then read:
+
+```bash
+curl -s "https://api.telegram.org/bot<TOKEN>/getUpdates" | grep -o '"chat":{"id":[-0-9]*'
+```
+
+A personal chat id is positive; a group's is negative and usually starts
+`-100`. In a group the bot must be a member, and if the group has
+privacy mode on it still receives what is sent to it directly.
 
 ## Adding a metric
 

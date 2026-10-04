@@ -49,5 +49,9 @@ datasources:
       postgresVersion: 1600
       timescaledb: false
     secureJsonData:
-      password: ${GRAFANA_DB_PASSWORD}
+      # $__file reads it at load time. The password lives in Vault and
+      # reaches this container as a mode-400 file written by
+      # grafana-bootstrap -- never as an environment variable, which
+      # anything able to run `docker inspect` can read.
+      password: $__file{/run/secrets/grafana/db_password}
     editable: true

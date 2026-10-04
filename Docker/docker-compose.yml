@@ -58,7 +58,6 @@ services:
       POSTGRES_MULTIPLE_DATABASES: "${VIDEO_DB}"
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      GRAFANA_DB_PASSWORD: ${GRAFANA_DB_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./postgres/postgres_entrypoint.sh:/docker-entrypoint-initdb.d/postgres_entrypoint.sh
@@ -222,19 +221,27 @@ services:
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
+    # Wraps the image's own /run.sh to re-apply the admin password from
+    # Vault; Grafana itself only reads that setting when it first creates
+    # the user. See the script for why.
+    entrypoint: ["/bin/sh", "/etc/grafana/entrypoint.sh"]
     expose:
       - "3000"
     environment:
       - GF_SECURITY_ADMIN_USER=admin
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      # Grafana reads any setting from a file when the variable is
+      # suffixed __FILE. The password itself comes from Vault via
+      # grafana-bootstrap, so it is in neither the repository, the
+      # environment, nor `docker inspect`.
+      - GF_SECURITY_ADMIN_PASSWORD__FILE=/run/secrets/grafana/admin_password
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_SERVER_SERVE_FROM_SUB_PATH=true
       - GF_SERVER_ROOT_URL=http://localhost/grafana
-      # Read by datasources.yaml; the read-only database login is not
-      # committed to the repository.
+      # The database name is not a secret; the password is, and
+      # datasources.yaml reads it from the file above's neighbour.
       - VIDEO_DB=${VIDEO_DB}
-      - GRAFANA_DB_PASSWORD=${GRAFANA_DB_PASSWORD}
     volumes:
+      - ./grafana/entrypoint.sh:/etc/grafana/entrypoint.sh:ro
       - ../monitoring/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
       # Without these two the dashboard in the repository was never loaded:
       # Grafana started empty everywhere except the machine whose volume
@@ -246,6 +253,14 @@ services:
       # file, with nothing else to remember.
       - ../monitoring/dashboards:/etc/grafana/dashboards:ro
       - grafana_data:/var/lib/grafana
+      # Written by grafana-bootstrap out of Vault, read-only here.
+      - grafana_secrets:/run/secrets/grafana:ro
+      # Holds the generated Telegram contact point next to the committed
+      # alert rules; the token cannot be committed, the rules should be.
+      - grafana_alerting:/etc/grafana/provisioning/alerting
+    depends_on:
+      grafana-bootstrap:
+        condition: service_completed_successfully
 
   vault:
     image: hashicorp/vault:latest
@@ -314,6 +329,31 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+
+  grafana-bootstrap:
+    build:
+      context: ./grafana-bootstrap
+      dockerfile: Dockerfile
+    container_name: grafana_bootstrap
+    environment:
+      VAULT_ADDR: ${VAULT_ADDR}
+      VAULT_TOKEN: ${VAULT_TOKEN}
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${VIDEO_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - grafana_secrets:/secrets
+      - grafana_alerting:/alerting
+    depends_on:
+      vault:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    # Runs to completion and exits; Grafana waits for it. Nothing else
+    # depends on it, so a sealed Vault keeps Grafana down and leaves the
+    # application running.
+    restart: "no"
 
   # ── Exporters ─────────────────────────────────────────────────────────
   # Postgres, Redis and Elasticsearch speak no Prometheus of their own.
@@ -393,6 +433,8 @@ services:
 
 volumes:
   minio_data:
+  grafana_secrets:
+  grafana_alerting:
   grafana_data:
   prometheus_data:
   postgres_data:
