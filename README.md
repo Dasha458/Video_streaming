@@ -19,7 +19,7 @@
 | **Транскодування** | FFmpeg (GPU + CPU fallback) | — |
 | **Управління секретами** | HashiCorp Vault | latest |
 | **Шлюз** | NGINX (маршрутизація) + Caddy (TLS у проді) | alpine / 2 |
-| **Моніторинг** | Prometheus + Grafana + Loki | — |
+| **Моніторинг** | Prometheus + Grafana + Loki + експортери (Postgres, Redis, Elasticsearch, nginx, cAdvisor) | — |
 | **Контейнеризація** | Docker + Docker Compose | 24+ |
 | **Пакетний менеджер Python** | uv | — |
 | **CI/CD** | GitLab CI (`.gitlab-ci.yml` + `ci/*.yml`, self-hosted runner з тегом `local`) | — |
@@ -66,7 +66,7 @@ cd Docker
 docker compose up -d
 ```
 
-Запустяться 14 сервісів: nginx, bff, frontend, convertor, postgres, redis, rabbitmq, minio, elasticsearch, vault, prometheus, grafana, loki, promtail.
+Запустяться 19 сервісів: nginx, bff, frontend, convertor, postgres, redis, rabbitmq, minio, elasticsearch, vault, prometheus, grafana, loki, promtail + п'ять експортерів метрик (postgres-exporter, redis-exporter, elasticsearch-exporter, nginx-exporter, cadvisor).
 
 ### 4. Ініціалізація Vault (лише при першому запуску)
 
@@ -184,7 +184,7 @@ Let's Encrypt видасть нові (і можна впертись у rate li
 | Головна сторінка | http://localhost | завжди |
 | API (JSON) | http://localhost/api/… | завжди |
 | Swagger | http://localhost/docs | **dev** |
-| Grafana | http://localhost/grafana (admin / admin) | **dev** |
+| Grafana | http://localhost/grafana (admin / admin) — 4 дашборди, див. [monitoring/README.md](monitoring/README.md) | **dev** |
 | Prometheus | http://localhost/prometheus | **dev** |
 | MinIO Console | http://localhost/minio/ui | **dev** |
 | RabbitMQ management | http://localhost/rabbitmq | **dev** |
@@ -237,7 +237,10 @@ Video_streaming/
 │   ├── dev-admin-locations.conf # DEV ONLY: Swagger, MinIO/RabbitMQ/Grafana/Prometheus/Vault UI+API
 │   ├── prod-realip.conf     # PROD ONLY: за Caddy справжній IP клієнта береться з X-Real-IP
 │   └── Caddyfile            # PROD ONLY: TLS-термінація, Let's Encrypt автоматично
-├── monitoring/              # Prometheus, Grafana, Loki, Promtail конфіги
+├── monitoring/              # Prometheus, Grafana, Loki, Promtail — усе provisioning'ом із репо
+│   ├── dashboards/          # 4 дашборди: API, Transcoding, Infrastructure, Platform
+│   ├── alerting.yaml        # 7 правил алертів
+│   └── README.md            # як це влаштовано і як додати панель/метрику
 ├── vault/
 │   └── config/              # vault.hcl (HTTP — Vault лишається у внутрішній мережі) + unseal.sh
 └── archive/
