@@ -36,3 +36,10 @@ VIDEO_SEARCH_TOTAL = Counter(
     "Total video search requests",
     ["category"],  #  "app_name"
 )
+
+# A labelled counter does not exist until something increments it, so
+# before the first search of the day the panel asking for searches reads
+# "no data" -- which looks exactly like a broken scrape rather than a
+# quiet hour. Naming the unfiltered case up front makes silence read as
+# zero. The other categories appear as they are used.
+VIDEO_SEARCH_TOTAL.labels(category="none")
