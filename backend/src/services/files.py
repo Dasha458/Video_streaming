@@ -449,8 +449,11 @@ class FileService:
             # the old code left off.
             await self._delete_original_upload(video)
             if thumbnail_path:
-                await self.s3_client.delete_file(
-                    thumbnail_path.split("/")[-1], bucket_name="video-thumbnails"
+                # Every version here too: a deleted video whose preview
+                # image is still being served is the same mistake in
+                # miniature.
+                await self.s3_client.delete_all_versions(
+                    thumbnail_path.split("/")[-1], "video-thumbnails"
                 )
         except (S3DeletionError, BotoCoreError, ClientError) as e:
             logging.warning(f"S3 deletion failed for {video_id}: {e}")
@@ -472,4 +475,4 @@ class FileService:
         prefix = str(video.id)
         for key in await self.s3_client.list_keys(prefix, bucket_name="videos"):
             if "/" not in key[len(prefix) :]:
-                await self.s3_client.delete_file(key, bucket_name="videos")
+                await self.s3_client.delete_all_versions(key, "videos")

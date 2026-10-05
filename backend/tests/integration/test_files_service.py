@@ -28,6 +28,7 @@ def _s3(keys=()):
     s3.list_keys = AsyncMock(return_value=list(keys))
     s3.delete_prefix = AsyncMock()
     s3.delete_file = AsyncMock()
+    s3.delete_all_versions = AsyncMock(return_value=1)
     return s3
 
 
@@ -63,7 +64,11 @@ async def test_deleting_removes_the_original_with_its_extension(
     s3 = _s3(keys=[f"{video.id}.mp4", f"{video.id}/master.m3u8"])
     await FileService(session, s3).delete_video(video.id, owner.id)
 
-    deleted = [c.args[0] for c in s3.delete_file.await_args_list]
+    # delete_all_versions, not delete_file: the bucket is versioned, so an
+    # ordinary delete writes a marker and leaves the whole file behind as
+    # a noncurrent version -- a "deleted" private video still sitting
+    # there in full.
+    deleted = [c.args[0] for c in s3.delete_all_versions.await_args_list]
     assert f"{video.id}.mp4" in deleted
     # The prefix handles everything under <id>/; it must not be deleted twice.
     assert f"{video.id}/master.m3u8" not in deleted
@@ -80,7 +85,7 @@ async def test_deleting_removes_the_thumbnail(session: AsyncSession):
     s3 = _s3()
     await FileService(session, s3).delete_video(video.id, owner.id)
 
-    buckets = [c.kwargs.get("bucket_name") for c in s3.delete_file.await_args_list]
+    buckets = [c.args[1] for c in s3.delete_all_versions.await_args_list]
     assert "video-thumbnails" in buckets
 
 

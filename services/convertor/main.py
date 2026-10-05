@@ -149,7 +149,11 @@ async def encode_video(filename: str) -> None:
         outcome = "ready"
         logging.info("Video encoding completed", extra={"video_id": video_id})
 
-        await s3_client.delete_file(filename, bucket_name="videos")
+        # Every version, not just the current one: the bucket is
+        # versioned, so a plain delete would leave the whole upload
+        # behind as a noncurrent version -- invisible in any listing and
+        # kept for the life of the video.
+        await s3_client.delete_all_versions(filename, bucket_name="videos")
 
     except Exception:
         # Every failure, not just our own AppError subclasses. A botocore
