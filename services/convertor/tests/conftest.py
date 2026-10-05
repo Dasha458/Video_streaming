@@ -18,7 +18,7 @@ def pytest_configure(config: pytest.Config) -> None:
     mock_hvac = types.ModuleType("hvac")
     mock_hvac.exceptions = types.ModuleType("hvac.exceptions")  # type: ignore[attr-defined]
     sys.modules["hvac"] = mock_hvac
-    sys.modules["hvac.exceptions"] = mock_hvac.exceptions  # type: ignore[attr-defined]
+    sys.modules["hvac.exceptions"] = mock_hvac.exceptions
 
     # hvac.Client(url=..., token=...) → mock client where is_authenticated() = True
     mock_client = MagicMock()

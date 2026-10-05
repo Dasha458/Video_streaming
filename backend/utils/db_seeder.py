@@ -4,10 +4,11 @@ import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from uuid import NAMESPACE_DNS, UUID, uuid5
+from uuid import NAMESPACE_DNS, UUID, uuid4, uuid5
 
 import aiofiles
 import httpx
+import xxhash
 from fastapi import UploadFile
 from fastapi_users.password import PasswordHelper
 from sqlalchemy.dialects.postgresql import insert
@@ -202,33 +203,48 @@ async def seed_videos_via_service(session, user_id: UUID) -> None:
 
     logging.info("Pushing video through business logic pipeline...")
 
-    with open(video_path, "rb") as v_file, open(thumb_path, "rb") as t_file:
-        video_upload = UploadFile(
-            filename="1280_placeholder.mp4",
-            file=v_file,
-            headers=Headers({"content-type": "video/mp4"}),
-        )
-        thumb_upload = UploadFile(
-            filename="thumbnail.png",
-            file=t_file,
-            headers=Headers({"content-type": "image/png"}),
-        )
+    # Videos are uploaded in parts now, and the single-shot
+    # FileService.upload_video this used to call is gone. The seeder does
+    # by hand what the upload service does for a browser: put the object
+    # in storage, hash what was stored, then create the video. Going
+    # through the chunked endpoints would mean an HTTP client and a
+    # signed-in session for what is a local fixture.
+    video_id = uuid4()
+    object_key = f"{video_id}{Path(video_path).suffix}"
 
-        try:
-            response = await file_service.upload_video(
-                video=video_upload,
-                thumbnail=thumb_upload,
+    try:
+        with open(video_path, "rb") as v_file:
+            await s3_client.upload_file(object_key, v_file, bucket_name="videos")
+
+        hasher = xxhash.xxh3_128()
+        size = 0
+        async for chunk in s3_client.iter_object(object_key, "videos"):
+            hasher.update(chunk)
+            size += len(chunk)
+
+        with open(thumb_path, "rb") as t_file:
+            thumb_upload = UploadFile(
+                filename="thumbnail.png",
+                file=t_file,
+                headers=Headers({"content-type": "image/png"}),
+            )
+            response = await file_service.register_uploaded_video(
+                video_id=video_id,
+                object_key=object_key,
+                video_hash=hasher.hexdigest(),
+                size=size,
                 name="Building an HLS Streaming Server",
                 description="This video was seeded via the backend business logic pipeline!",
                 privacy="public",
                 category="Education",
                 user_id=user_id,
+                thumbnail=thumb_upload,
             )
-            logging.info(f"Successfully queued video! Response: {response}")
-        except Exception as e:
-            logging.error(f"Failed to seed video via FileService: {e}")
-        finally:
-            await broker.close()
+        logging.info(f"Successfully queued video! Response: {response}")
+    except Exception as e:
+        logging.error(f"Failed to seed video via FileService: {e}")
+    finally:
+        await broker.close()
 
 
 async def seed_users_channels_videos(session) -> None:

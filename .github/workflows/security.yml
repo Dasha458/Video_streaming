@@ -1,0 +1,66 @@
+# What the GitLab pipeline got from its SAST and Secret-Detection
+# templates, which do not exist on GitHub.
+#
+# CodeQL replaces SAST. Gitleaks replaces Secret-Detection -- the
+# pre-commit hook has run it locally for a while, but a hook only covers
+# people who installed it, and only the commit they are making.
+name: Security
+
+on:
+  push:
+    branches: [main, "dev**"]
+  pull_request:
+  schedule:
+    # Weekly, because an advisory can land against code that has not
+    # changed. Monday morning, before anybody starts on something new.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [python, javascript-typescript]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialise CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          language: ${{ matrix.language }}
+          # security-and-quality is noisier than the default and finds
+          # more; the findings land in the Security tab rather than
+          # failing the build, so noise costs attention, not velocity.
+          queries: security-and-quality
+
+      - name: Analyse
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:${{ matrix.language }}
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Gitleaks reads history, not just the working tree: a secret
+          # removed in a later commit is still a secret that was pushed.
+          fetch-depth: 0
+
+      - name: Scan for secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

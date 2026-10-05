@@ -1,0 +1,159 @@
+# Lint and unit-test the two Python services.
+#
+# The pipelines under ci/ are written for GitLab and this repository lives
+# on GitHub, so nothing had ever actually run them: every check was green
+# only because somebody ran it by hand. These do run.
+name: Backend
+
+on:
+  push:
+    branches: [main, "dev**"]
+  pull_request:
+  workflow_dispatch:
+
+# A second push to the same branch makes the first run pointless.
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [backend, services/convertor]
+    defaults:
+      run:
+        working-directory: ${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.9.18"
+          enable-cache: true
+          cache-dependency-glob: "${{ matrix.service }}/uv.lock"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      # Four tools, and they have to agree with each other: ruff and isort
+      # both sort imports, and a disagreement between them is a pipeline
+      # that can never be green. See known-third-party in both configs.
+      - run: uv run ruff check . --config pyproject.toml
+      - run: uv run black --check . --config pyproject.toml
+      - run: uv run isort --check-only . --settings-path pyproject.toml
+      - run: uv run mypy . --config-file pyproject.toml
+
+  test:
+    name: Tests (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [backend, services/convertor]
+    defaults:
+      run:
+        working-directory: ${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.9.18"
+          enable-cache: true
+          cache-dependency-glob: "${{ matrix.service }}/uv.lock"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      # Excludes tests/integration/ (its own job, needs a real Postgres)
+      # and tests/e2e/ (needs the whole stack deployed and answering).
+      - name: Run tests
+        run: >
+          uv run pytest -m "not integration and not e2e"
+          --cov=. --cov-report=term --cov-report=xml:coverage.xml
+          --junitxml=report.xml tests/
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-${{ strategy.job-index }}
+          path: |
+            ${{ matrix.service }}/report.xml
+            ${{ matrix.service }}/coverage.xml
+          retention-days: 7
+
+  integration:
+    name: Integration tests (real Postgres)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.9.18"
+          enable-cache: true
+          cache-dependency-glob: "backend/uv.lock"
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      # Testcontainers starts its own Postgres; the runner already has a
+      # Docker daemon, so nothing needs to be declared as a service here.
+      #
+      # The loop-scope flags are not optional: the engine and session
+      # fixtures are session-scoped (one container for the whole run), so
+      # each test's event loop has to be too, or asyncpg raises "Future
+      # attached to a different loop". See tests/integration/conftest.py.
+      - name: Run integration tests
+        run: >
+          uv run pytest -m integration
+          -o asyncio_default_test_loop_scope=session
+          -o asyncio_default_fixture_loop_scope=session
+          --junitxml=report-integration.xml tests/integration/
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-integration
+          path: backend/report-integration.xml
+          retention-days: 7
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [backend, services/convertor]
+    defaults:
+      run:
+        working-directory: ${{ matrix.service }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.9.18"
+          enable-cache: true
+          cache-dependency-glob: "${{ matrix.service }}/uv.lock"
+
+      - run: uv sync --frozen
+
+      # Reported, not enforced: a new advisory against a transitive
+      # dependency should not stop a change that has nothing to do with
+      # it. The job stays visible so somebody can look.
+      - name: Audit dependencies
+        continue-on-error: true
+        run: uv run pip-audit

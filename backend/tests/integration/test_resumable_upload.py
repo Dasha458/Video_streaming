@@ -90,6 +90,7 @@ class TestStarting:
         record = await session.scalar(
             select(UploadSession).where(UploadSession.id == started.upload_id)
         )
+        assert record is not None, "the upload left no session row"
         key = s3.begin_multipart.await_args.args[0]
         assert key.startswith(str(record.video_id))
         assert key.endswith(".mp4")

@@ -56,14 +56,16 @@ class TestWhichRenditionIsUsed:
         _rendition(tmp_path, "720p")
         _rendition(tmp_path, "1080p")
 
-        assert _download_source(tmp_path).parent.name == "stream_720p"
+        chosen = _download_source(tmp_path)
+        assert chosen is not None and chosen.parent.name == "stream_720p"
 
     def test_the_highest_available_when_the_source_was_smaller(self, tmp_path: Path):
         """A 480-line source never produces a 720p rendition -- upscaling
         would be inventing detail -- and the button still has to work."""
         _rendition(tmp_path, "360p")
 
-        assert _download_source(tmp_path).parent.name == "stream_360p"
+        chosen = _download_source(tmp_path)
+        assert chosen is not None and chosen.parent.name == "stream_360p"
 
     def test_nothing_when_the_encode_produced_nothing(self, tmp_path: Path):
         assert _download_source(tmp_path) is None
@@ -84,7 +86,9 @@ class TestBuildingTheFile:
 
         cmd = spawned.call_args.args
         assert "-c" in cmd and cmd[cmd.index("-c") + 1] == "copy"
-        assert "+faststart" in cmd, "the index must be at the front to play while loading"
+        assert (
+            "+faststart" in cmd
+        ), "the index must be at the front to play while loading"
         assert cmd[-1].endswith(DOWNLOAD_NAME)
 
     @pytest.mark.asyncio
@@ -177,7 +181,7 @@ class TestReleasingTheSource:
         context = MagicMock()
         context.__aenter__ = AsyncMock(return_value=s3)
         context.__aexit__ = AsyncMock(return_value=False)
-        client._get_client = MagicMock(return_value=context)
+        client._get_client = MagicMock(return_value=context)  # type: ignore[method-assign]
 
         removed = await client.delete_all_versions("abc.mp4", bucket_name="videos")
 

@@ -44,7 +44,12 @@ class RabbitmqSettings(BaseAppSettings):
     RABBITMQ_USER: Optional[str] = Field(default=None)
     RABBITMQ_PASSWORD: Optional[str] = Field(default=None)
 
-    @computed_field
+    # @property as well as @computed_field: pydantic wraps a bare method
+    # in one anyway, but only the explicit form tells a type checker that
+    # `settings.rabbitmq_url` is a string rather than a bound method --
+    # which is why passing it to RabbitBroker read as a type error.
+    @computed_field  # type: ignore[prop-decorator]
+    @property
     def rabbitmq_url(self) -> str:
         return (
             f"amqp://{self.RABBITMQ_USER}:{self.RABBITMQ_PASSWORD}"

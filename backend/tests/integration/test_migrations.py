@@ -15,12 +15,11 @@ migration says something the models do not.
 from typing import Any, List
 
 import pytest
+from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
 from sqlalchemy import create_engine, text
-
-from alembic import command
 
 pytestmark = pytest.mark.integration
 

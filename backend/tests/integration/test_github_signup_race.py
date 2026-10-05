@@ -14,7 +14,7 @@ than on the name.
 from unittest.mock import MagicMock
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.errors.auth import GitHubUsernameUnavailableError
@@ -70,7 +70,8 @@ async def test_the_transaction_survives_a_collision(session: AsyncSession):
 
     # Still usable: without a savepoint the IntegrityError would have
     # poisoned it and taken the rest of the sign-in with it.
-    assert await session.scalar(select(User.id).limit(1)) is not None
+    remaining = await session.scalar(select(func.count()).select_from(User))
+    assert remaining is not None and remaining > 0
 
 
 @pytest.mark.asyncio

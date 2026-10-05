@@ -372,9 +372,7 @@ class S3Client:
         try:
             async with self._get_client() as client:
                 paginator = client.get_paginator("list_object_versions")
-                async for page in paginator.paginate(
-                    Bucket=bucket_name, Prefix=prefix
-                ):
+                async for page in paginator.paginate(Bucket=bucket_name, Prefix=prefix):
                     # Delete markers too: they are what an earlier plain
                     # delete left behind, and they keep the noncurrent
                     # versions reachable.

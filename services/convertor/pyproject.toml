@@ -17,10 +17,18 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    # The lint job runs over this service too, and these were missing from
+    # it: `uv sync` installed none of them, so the step could only ever
+    # fail on a runner that actually executed it.
+    "black>=25.9.0",
+    "isort>=6.1.0",
     "jsonschema>=4.23",
+    "mypy>=1.18.2",
+    "pip-audit>=2.10.0",
     "pytest>=8.4.1",
     "pytest-asyncio>=1.1.0",
     "pytest-cov>=6.2.1",
+    "ruff>=0.14.0",
 ]
 
 [tool.black]
@@ -64,6 +72,14 @@ warn_unused_ignores = true
 strict_optional = true
 explicit_package_bases = true
 exclude = "(alembic|.venv)"
+
+# The same exemption the backend already makes: disallow_untyped_defs is
+# for the service itself. Annotating several hundred `def test_x():` adds
+# no safety and buries the findings in src/ -- there were 91 of them here,
+# every one a missing `-> None` on a test.
+[[tool.mypy.overrides]]
+module = ["tests.*"]
+disallow_untyped_defs = false
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
