@@ -165,6 +165,51 @@ class S3Client:
                     target.write_bytes(await stream.read())
         return len(keys)
 
+    async def delete_all_versions(
+        self, object_name: str, bucket_name: Optional[str] = None
+    ) -> int:
+        """Remove an object and every version of it.
+
+        The source file is deleted once an encode succeeds -- but the
+        bucket is versioned, so an ordinary delete writes a marker and
+        leaves the whole upload behind as a noncurrent version. It is
+        then invisible: it appears in no listing, and the orphan sweeper
+        does not report it either, because the video it belongs to still
+        exists. Every video ever uploaded was keeping a full copy of its
+        own source for ever, silently -- up to 500 MB each.
+        """
+        if not bucket_name:
+            raise ValueError("bucket_name must be provided")
+        elif bucket_name not in self.bucket_names:
+            raise ValueError("bucket_name is not in bucket_names")
+
+        removed = 0
+        try:
+            async with self._get_client() as client:
+                paginator = client.get_paginator("list_object_versions")
+                async for page in paginator.paginate(
+                    Bucket=bucket_name, Prefix=object_name
+                ):
+                    targets = [
+                        {"Key": obj["Key"], "VersionId": obj["VersionId"]}
+                        for kind in ("Versions", "DeleteMarkers")
+                        for obj in page.get(kind, [])
+                        # Prefix matching would also catch <name>-other.
+                        if obj["Key"] == object_name
+                    ]
+                    if not targets:
+                        continue
+                    await client.delete_objects(
+                        Bucket=bucket_name, Delete={"Objects": targets}
+                    )
+                    removed += len(targets)
+            logging.info(
+                "Deleted %d versions of %s from %s", removed, object_name, bucket_name
+            )
+        except ClientError as e:
+            logging.error(f"Error deleting versions of {object_name}: {e}")
+        return removed
+
     async def delete_file(
         self, object_name: str, bucket_name: Optional[str] = None
     ) -> None:

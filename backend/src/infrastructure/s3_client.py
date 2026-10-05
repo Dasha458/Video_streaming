@@ -339,15 +339,25 @@ class S3Client:
 
     async def delete_prefix(
         self, prefix: str, bucket_name: Optional[str] = None
-    ) -> None:
-        """
-        Deletes all objects under a given prefix (folder) in an S3 bucket.
+    ) -> int:
+        """Remove everything under a prefix, every version of it.
 
         Example:
             await s3_client.delete_prefix("1234abcd/", bucket_name="videos")
 
+        Versioning is enabled on these buckets, so an ordinary delete
+        writes a delete marker and leaves the bytes as a noncurrent
+        version. For a video somebody asked to delete that is the wrong
+        answer twice over: the storage is still spent, and a private
+        video the owner removed is still sitting there in full.
+
+        The orphan sweeper would eventually collect it, but "eventually,
+        if a person remembers to run a script" is not what deleting
+        something means.
+
         :param prefix: The folder or prefix path (e.g., 'folder/subfolder/').
         :param bucket_name: The name of the bucket to delete from.
+        :return: how many object versions were removed.
         """
         if not bucket_name:
             raise ValueError("bucket_name must be provided")
@@ -355,50 +365,43 @@ class S3Client:
             raise ValueError("bucket_name is not in bucket_names")
         if not prefix or prefix.strip() == "":
             raise ValueError(
-                "Prefix cannot be empty — refusing to delete entire bucket"
+                "Prefix cannot be empty -- refusing to delete entire bucket"
             )
 
+        removed = 0
         try:
             async with self._get_client() as client:
-                paginator = client.get_paginator("list_objects_v2")
-
-                async for page in paginator.paginate(Bucket=bucket_name, Prefix=prefix):
-                    objects = page.get("Contents", [])
-                    if not objects:
-                        logging.info(
-                            f"No objects found under prefix '{prefix}' in '{bucket_name}'."
-                        )
+                paginator = client.get_paginator("list_object_versions")
+                async for page in paginator.paginate(
+                    Bucket=bucket_name, Prefix=prefix
+                ):
+                    # Delete markers too: they are what an earlier plain
+                    # delete left behind, and they keep the noncurrent
+                    # versions reachable.
+                    targets = [
+                        {"Key": obj["Key"], "VersionId": obj["VersionId"]}
+                        for kind in ("Versions", "DeleteMarkers")
+                        for obj in page.get(kind, [])
+                    ]
+                    if not targets:
                         continue
-
-                    delete_batch = {
-                        "Objects": [{"Key": obj["Key"]} for obj in objects],
-                        "Quiet": True,
-                    }
-
-                    if len(objects) > 1000:
-                        for i in range(0, len(objects), 1000):
-                            batch = objects[i : i + 1000]
-                            await client.delete_objects(
-                                Bucket=bucket_name,
-                                Delete={
-                                    "Objects": [{"Key": o["Key"]} for o in batch],
-                                    "Quiet": True,
-                                },
-                            )
-                    else:
+                    for i in range(0, len(targets), 1000):
                         await client.delete_objects(
-                            Bucket=bucket_name, Delete=delete_batch
+                            Bucket=bucket_name,
+                            Delete={"Objects": targets[i : i + 1000], "Quiet": True},
                         )
+                    removed += len(targets)
 
-                    logging.info(
-                        f"Deleted {len(objects)} objects under prefix '{prefix}' from '{bucket_name}'"
-                    )
-
-        except ClientError as e:
-            logging.error(
-                f"Error deleting prefix '{prefix}' from bucket '{bucket_name}': {e}"
+            logging.info(
+                "Deleted %d object versions under '%s' in '%s'",
+                removed,
+                prefix,
+                bucket_name,
             )
-            raise
+            return removed
+        except ClientError as e:
+            logging.error(f"Error deleting prefix '{prefix}': {e}")
+            raise S3DeletionError() from e
 
     async def list_objects(self, bucket_name: str) -> list[str]:
         """

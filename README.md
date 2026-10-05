@@ -208,6 +208,23 @@ Let's Encrypt видасть нові (і можна впертись у rate li
 
 ---
 
+## Тести
+
+| Набір | Що перевіряє | Як запустити |
+|---|---|---|
+| `backend/tests/` | Логіку на мокованій сесії й сховищі | `uv run pytest -m "not integration and not e2e"` |
+| `backend/tests/integration/` | Те саме на **справжньому Postgres** (Testcontainers) | `uv run pytest -m integration -o asyncio_default_test_loop_scope=session -o asyncio_default_fixture_loop_scope=session` |
+| `backend/tests/e2e/` | **Наскрізний шлях продукту** на піднятому стеку | `docker compose up -d` → `uv run pytest tests/e2e` |
+| `services/convertor/tests/` | Кодування, ремукс, метрики | `uv run pytest` |
+| `frontend/tests/` | Хуки, мапери, компоненти | `npm test` |
+
+E2E проходять через шлюз і чекають на конвертор: реєстрація → завантаження
+частинами → кодування → плейлист і сегменти з MinIO → завантаження готового
+mp4 → приватність → видалення. Якщо стек не відповідає на
+`http://localhost/api/health/ready`, вони **пропускаються**, а не падають.
+Кожен прогін бере файл, якого ще не було (правило «один файл — одне відео»),
+і прибирає за собою все створене.
+
 ## Структура проєкту
 
 ```
@@ -230,7 +247,8 @@ Video_streaming/
 │   ├── alembic/             # Міграції БД
 │   ├── tests/               # Unit-тести (мокована сесія)
 │   ├── tests/integration/   # Тести на реальному Postgres через Testcontainers (потрібен Docker)
-│   └── utils/               # Dev-тулінг: db_seeder, es_reindexer, seed_analytics
+│   ├── tests/e2e/           # Наскрізні: завантаження → кодування → перегляд, на піднятому стеку
+│   └── utils/               # Dev-тулінг: db_seeder, es_reindexer, seed_analytics, backfill_downloads
 ├── frontend/                # React 19 + TypeScript SPA (Vite)
 │   ├── src/
 │   │   ├── pages/           # 27 сторінок (lazy-loaded); Watch/ і Studio/ — розбиті на підкомпоненти

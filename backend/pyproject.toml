@@ -117,6 +117,7 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
     "integration: needs Docker (Testcontainers Postgres); excluded from the default run, see tests/integration/",
+    "e2e: needs the whole stack running (docker compose up -d); excluded from the default run, see tests/e2e/",
 ]
 
 [tool.babel]

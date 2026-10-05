@@ -30,10 +30,11 @@ test-python:
   extends: .python-job
   stage: test
   script:
-    # -m "not integration" excludes tests/integration/ (needs Docker; runs
-    # in the dedicated test-integration-python job below instead).
+    # Excludes tests/integration/ (needs Docker; runs in the dedicated job
+    # below) and tests/e2e/ (needs the whole stack deployed and answering,
+    # which no unit-test runner has).
     - uv run pytest \
-      -m "not integration" \
+      -m "not integration and not e2e" \
       --cov=. \
       --cov-report=term \
       --cov-report=xml:coverage-${SERVICE//\//-}.xml \

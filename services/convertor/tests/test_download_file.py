@@ -137,3 +137,57 @@ class TestBuildingTheFile:
                 await build_download_file(tmp_path)
 
         assert "Invalid data found" in str(failure.value)
+
+
+class TestReleasingTheSource:
+    """The uploaded file is deleted once the encode succeeds.
+
+    The bucket is versioned, so an ordinary delete writes a marker and
+    leaves the whole upload behind as a noncurrent version -- invisible
+    in any listing, and not reported by the orphan sweeper either, since
+    the video it belongs to still exists. Every video ever uploaded was
+    keeping a full copy of its own source for ever, up to 500 MB each.
+    """
+
+    @pytest.mark.asyncio
+    async def test_it_removes_every_version_of_the_upload(self):
+        from src.s3_client import S3Client
+
+        client = S3Client.__new__(S3Client)
+        client.bucket_names = ["videos"]
+
+        pages = [
+            {
+                "Versions": [
+                    {"Key": "abc.mp4", "VersionId": "v1"},
+                    {"Key": "abc.mp4", "VersionId": "v2"},
+                    # Another object that merely starts the same way.
+                    {"Key": "abc.mp4.part", "VersionId": "v9"},
+                ],
+                "DeleteMarkers": [{"Key": "abc.mp4", "VersionId": "d1"}],
+            }
+        ]
+
+        s3 = AsyncMock()
+        s3.delete_objects = AsyncMock()
+        paginator = MagicMock()
+        paginator.paginate = MagicMock(return_value=_async_pages(pages))
+        s3.get_paginator = MagicMock(return_value=paginator)
+
+        context = MagicMock()
+        context.__aenter__ = AsyncMock(return_value=s3)
+        context.__aexit__ = AsyncMock(return_value=False)
+        client._get_client = MagicMock(return_value=context)
+
+        removed = await client.delete_all_versions("abc.mp4", bucket_name="videos")
+
+        assert removed == 3, "two versions and the delete marker"
+        sent = s3.delete_objects.await_args.kwargs["Delete"]["Objects"]
+        assert {"Key": "abc.mp4", "VersionId": "v1"} in sent
+        assert {"Key": "abc.mp4", "VersionId": "d1"} in sent
+        assert all(obj["Key"] == "abc.mp4" for obj in sent), "a neighbour was caught"
+
+
+async def _async_pages(pages):
+    for page in pages:
+        yield page
