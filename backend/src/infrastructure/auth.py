@@ -190,9 +190,16 @@ class PasswordBoundJWTStrategy(JWTStrategy):
             data, self.encode_key, self.lifetime_seconds, algorithm=self.algorithm
         )
 
-    async def read_token(self, token, user_manager):
+    async def read_token(
+        self,
+        token: Optional[str],
+        user_manager: BaseUserManager[models.UP, models.ID],
+    ) -> Optional[models.UP]:
         user = await super().read_token(token, user_manager)
-        if user is None:
+        if user is None or token is None:
+            # The parent already returns None for a missing token; saying
+            # so again is what tells the type checker the decode below
+            # cannot be handed one.
             return None
 
         try:

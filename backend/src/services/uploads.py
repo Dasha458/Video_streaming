@@ -44,6 +44,7 @@ from src.errors.uploads import (
     UploadSizeMismatchError,
 )
 from src.models.upload_session import UploadSession
+from src.schemas.endpoint import FileResponse
 from src.schemas.uploads import UploadSessionStatus, UploadStarted
 
 if TYPE_CHECKING:
@@ -183,7 +184,7 @@ class UploadService:
         privacy: str,
         category: str,
         thumbnail: Optional[UploadFile],
-    ):
+    ) -> "FileResponse":
         """Assemble the parts, then do what the old upload did at the end.
 
         The video row, the duplicate check and the encode job all happen

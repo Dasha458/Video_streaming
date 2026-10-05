@@ -46,17 +46,16 @@ def _service(profile, emails, emails_status=200):
     return service, context
 
 
-async def _email(profile, emails, emails_status=200) -> str:
+async def _email(monkeypatch, profile, emails, emails_status=200) -> str:
     import src.services.github_oauth_service as module
 
     service, context = _service(profile, emails, emails_status)
-    original = module.httpx.AsyncClient
-    module.httpx.AsyncClient = MagicMock(return_value=context)
-    try:
-        _, email = await service._fetch_github_user_email("token")
-        return email
-    finally:
-        module.httpx.AsyncClient = original
+    # Through monkeypatch rather than assigning to module.httpx.AsyncClient:
+    # that is rebinding a type, and it leaks into every later test if the
+    # restore is ever skipped.
+    monkeypatch.setattr(module.httpx, "AsyncClient", MagicMock(return_value=context))
+    _, email = await service._fetch_github_user_email("token")
+    return email
 
 
 VICTIM = "someone.else@example.com"
@@ -65,10 +64,11 @@ MINE = "me@example.com"
 
 class TestOnlyVerifiedAddressesCount:
     @pytest.mark.asyncio
-    async def test_an_unverified_profile_email_is_not_used(self):
+    async def test_an_unverified_profile_email_is_not_used(self, monkeypatch):
         """The takeover: the profile field claims the victim's address,
         and the account GitHub actually verified is a different one."""
         email = await _email(
+            monkeypatch,
             profile={"id": 1, "login": "attacker", "email": VICTIM},
             emails=[
                 {"email": VICTIM, "primary": False, "verified": False},
@@ -79,10 +79,11 @@ class TestOnlyVerifiedAddressesCount:
         assert email == MINE
 
     @pytest.mark.asyncio
-    async def test_a_verified_profile_email_is_honoured(self):
+    async def test_a_verified_profile_email_is_honoured(self, monkeypatch):
         """Their own choice, and GitHub vouches for it."""
         chosen = "chosen@example.com"
         email = await _email(
+            monkeypatch,
             profile={"id": 1, "login": "someone", "email": chosen},
             emails=[
                 {"email": MINE, "primary": True, "verified": True},
@@ -93,8 +94,9 @@ class TestOnlyVerifiedAddressesCount:
         assert email == chosen
 
     @pytest.mark.asyncio
-    async def test_the_primary_verified_address_is_the_default(self):
+    async def test_the_primary_verified_address_is_the_default(self, monkeypatch):
         email = await _email(
+            monkeypatch,
             profile={"id": 1, "login": "someone", "email": None},
             emails=[
                 {"email": "secondary@example.com", "primary": False, "verified": True},
@@ -105,36 +107,37 @@ class TestOnlyVerifiedAddressesCount:
         assert email == MINE
 
     @pytest.mark.asyncio
-    async def test_an_account_with_nothing_verified_is_refused(self):
+    async def test_an_account_with_nothing_verified_is_refused(self, monkeypatch):
         with pytest.raises(GitHubEmailNotFoundError):
             await _email(
+                monkeypatch,
                 profile={"id": 1, "login": "someone", "email": VICTIM},
                 emails=[{"email": VICTIM, "primary": True, "verified": False}],
             )
 
     @pytest.mark.asyncio
-    async def test_the_profile_email_is_no_substitute_for_the_list(self):
+    async def test_the_profile_email_is_no_substitute_for_the_list(self, monkeypatch):
         """If the verified list cannot be read, there is no address worth
         trusting -- the profile field was the fallback before."""
         with pytest.raises(GitHubEmailNotFoundError):
             await _email(
+                monkeypatch,
                 profile={"id": 1, "login": "someone", "email": VICTIM},
                 emails={"message": "Bad credentials"},
                 emails_status=403,
             )
 
     @pytest.mark.asyncio
-    async def test_a_profile_that_cannot_be_read_is_an_error(self):
+    async def test_a_profile_that_cannot_be_read_is_an_error(self, monkeypatch):
         import src.services.github_oauth_service as module
 
         service, context = _service({}, [])
         context.__aenter__.return_value.get = AsyncMock(
             side_effect=[_response(401, {}), _response(200, [])]
         )
-        original = module.httpx.AsyncClient
-        module.httpx.AsyncClient = MagicMock(return_value=context)
-        try:
-            with pytest.raises(GitHubUserInfoError):
-                await service._fetch_github_user_email("token")
-        finally:
-            module.httpx.AsyncClient = original
+        monkeypatch.setattr(
+            module.httpx, "AsyncClient", MagicMock(return_value=context)
+        )
+
+        with pytest.raises(GitHubUserInfoError):
+            await service._fetch_github_user_email("token")

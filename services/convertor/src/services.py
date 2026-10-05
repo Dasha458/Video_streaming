@@ -5,8 +5,10 @@ import math
 import shutil
 import subprocess
 from collections import deque
+from collections.abc import Awaitable, Callable, MutableMapping
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 from .exceptions import (
     DirectoryCleanupError,
@@ -406,7 +408,12 @@ async def get_video_properties(url: str) -> VideoProperties:
     )
 
 
-async def check_liveness(scope, receive, send):
+async def check_liveness(
+    scope: "MutableMapping[str, Any]",
+    receive: "Callable[[], Awaitable[MutableMapping[str, Any]]]",
+    send: "Callable[[MutableMapping[str, Any]], Awaitable[None]]",
+) -> None:
+    """The ASGI signature FastStream expects for a raw route."""
     if scope["type"] == "http":
         await send(
             {

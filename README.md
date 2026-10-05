@@ -22,7 +22,7 @@
 | **Моніторинг** | Prometheus + Grafana + Loki + експортери (Postgres, Redis, Elasticsearch, nginx, cAdvisor) | — |
 | **Контейнеризація** | Docker + Docker Compose | 24+ |
 | **Пакетний менеджер Python** | uv | — |
-| **CI/CD** | GitLab CI (`.gitlab-ci.yml` + `ci/*.yml`, self-hosted runner з тегом `local`) | — |
+| **CI** | GitHub Actions (`.github/workflows/`) — виконується; GitLab CI (`.gitlab-ci.yml` + `ci/*.yml`) лишився для self-hosted runner і на GitHub **не запускається** | — |
 
 ---
 
@@ -208,6 +208,29 @@ Let's Encrypt видасть нові (і можна впертись у rate li
 
 ---
 
+## CI
+
+Перевірки виконуються в **GitHub Actions**, файли — у `.github/workflows/`:
+
+| Робочий процес | Що робить |
+|---|---|
+| `backend.yml` | ruff + black + isort + mypy і юніт-тести для `backend` та `services/convertor`; окремою задачею — integration-тести на справжньому Postgres (Testcontainers); аудит залежностей |
+| `frontend.yml` | eslint, `tsc -b`, vitest і збірка на Node 20 і 22; `npm audit` |
+| `security.yml` | CodeQL (Python + TypeScript) і пошук секретів у **всій історії** через gitleaks; плюс щотижня за розкладом |
+
+Запускаються на push у `main` та гілки `dev*`, на pull request і вручну.
+E2E-набір у CI не виконується: йому потрібен піднятий стек разом з
+ініціалізованим Vault, тож він запускається локально (див. «Тести»).
+
+> **На форку Actions вимкнені за замовчуванням.** Після першого пушу
+> відкрийте вкладку **Actions** у своєму репозиторії й увімкніть їх —
+> інакше файли просто лежать і нічого не запускається.
+
+Конвеєри GitLab (`.gitlab-ci.yml`, `ci/*.yml`) лишені для self-hosted
+runner; на GitHub вони не виконуються. Поки їх не було замінено, жодна
+перевірка не виконувалась автоматично — усе зелене було зеленим лише
+тому, що хтось запускав це руками.
+
 ## Тести
 
 | Набір | Що перевіряє | Як запустити |
@@ -229,7 +252,8 @@ mp4 → приватність → видалення. Якщо стек не в
 
 ```
 Video_streaming/
-├── .gitlab-ci.yml           # Точка входу CI: stages + include ci/*.yml
+├── .github/workflows/       # GitHub Actions — те, що реально виконується
+├── .gitlab-ci.yml           # GitLab CI: stages + include ci/*.yml (не виконується на GitHub)
 ├── .pre-commit-config.yaml  # gitleaks, detect-private-key, лінтери
 ├── ci/                      # GitLab CI jobs: python, node, security, deploy (build+Trivy+push), auto-pr
 ├── Docker/

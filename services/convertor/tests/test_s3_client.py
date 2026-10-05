@@ -38,7 +38,7 @@ def _s3(fake_client):
             fake_client.closed = True
             return False
 
-    client._get_client = lambda: _Ctx()  # type: ignore[method-assign]
+    client._get_client = lambda: _Ctx()  # type: ignore[assignment, return-value]
     return client
 
 

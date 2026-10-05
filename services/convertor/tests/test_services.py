@@ -233,7 +233,7 @@ async def test_get_video_properties_handles_missing_bitrate():
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def _mock_ffmpeg_process(returncode: int = 0, stderr_chunks: list = None):
+def _mock_ffmpeg_process(returncode: int = 0, stderr_chunks: list | None = None):
     """Returns an AsyncMock mimicking asyncio.subprocess.Process for ffmpeg."""
     proc = AsyncMock()
     proc.returncode = returncode

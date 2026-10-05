@@ -78,6 +78,12 @@ line_length = 88
 multi_line_output = 3
 include_trailing_comma = true
 skip = ["alembic", ".venv"]
+# `alembic` is a package we depend on, not ours. isort was classifying it
+# as first-party because a directory of that name sits next to the code,
+# and put its imports in a separate block; ruff's own isort rule called it
+# third-party and wanted them merged. The two then undid each other's fix
+# on every run, and both are in CI.
+known_third_party = ["alembic"]
 
 [tool.ruff]
 # Same width black and isort use -- ruff previously said 110 while black
@@ -93,6 +99,14 @@ select = ["E", "F", "W", "I"]  # E/W — pycodestyle, F — pyflakes, I — isor
 # black owns line wrapping; it deliberately leaves long strings/URLs intact,
 # so enforcing E501 on top of it only produces unfixable noise.
 ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+# Said here as well as in [tool.isort]: ruff infers first-party from the
+# directories beside the code, so the `alembic/` folder made it treat the
+# bare `alembic` package as ours while still calling `alembic.config`
+# third-party. The two tools then moved the same import back and forth on
+# every run, and both are in CI.
+known-third-party = ["alembic"]
 
 [tool.mypy]
 python_version = 3.12

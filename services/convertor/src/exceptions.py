@@ -50,7 +50,7 @@ class PresignFailedError(StorageError):
 class GPUNoAvailableError(AppError):
     code = "GPU_NOT_AVAILABLE"
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("CUDA GPU not available on this worker")
 
 
@@ -61,14 +61,14 @@ class FFmpegError(AppError):
 class FFmpegStartError(FFmpegError):
     code = "FFMPEG_START_FAILED"
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("Failed to start ffmpeg process")
 
 
 class FFmpegInputError(FFmpegError):
     code = "FFMPEG_INPUT_FAILED"
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__("Error while streaming input to ffmpeg")
 
 
